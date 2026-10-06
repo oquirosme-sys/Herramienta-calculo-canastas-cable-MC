@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canastas MC — Memoria de cálculo</title>
+  <meta name="description" content="Memoria de cálculo de canastas portacables para cable MC según NEC 2020 Art. 392.22(A).">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div>
+        <div class="brand-sub">Sinergia Ingeniería</div>
+        <div class="brand-title">Canastas portacables · Cable MC</div>
+      </div>
+    </div>
+
+    <div class="project-bar">
+      <label class="sr-only" for="selProyecto">Proyecto</label>
+      <select id="selProyecto" title="Proyecto activo"></select>
+      <div class="menu">
+        <button class="btn btn-ghost" id="btnMenuProyecto" aria-haspopup="true">Proyecto ▾</button>
+        <div class="menu-list" id="menuProyecto" hidden>
+          <button data-accion="nuevo">Nuevo proyecto</button>
+          <button data-accion="duplicar">Duplicar proyecto</button>
+          <button data-accion="exportar">Exportar proyecto (.json)</button>
+          <button data-accion="importar">Importar proyecto (.json)</button>
+          <hr>
+          <button data-accion="eliminar" class="danger">Eliminar proyecto</button>
+        </div>
+      </div>
+      <span class="save-state" id="estadoGuardado" title="Los datos se guardan en este navegador">●  Guardado</span>
+    </div>
+
+    <button class="btn btn-admin" id="btnAdmin" title="Modo administrador">
+      <span class="lock" aria-hidden="true">🔒</span> <span id="lblAdmin">Administrador</span>
+    </button>
+  </header>
+
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+
+  <main id="vista" class="vista"></main>
+
+  <footer class="pie">
+    Criterio: NEC 2020 Art. 392.22(A) · carga máxima por claro del fabricante · ocupación bruta (referencia).
+    No incluye ampacidad (392.80(A)), soportes (392.30) ni curvas.
+  </footer>
+
+  <!-- Diálogo genérico -->
+  <dialog id="dlg">
+    <form method="dialog" id="dlgForm">
+      <h3 id="dlgTitulo"></h3>
+      <div id="dlgCuerpo"></div>
+      <div class="dlg-acciones">
+        <button value="cancel" class="btn btn-ghost" id="dlgCancelar">Cancelar</button>
+        <button value="ok" class="btn btn-primary" id="dlgOk">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/catalogo-base.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
