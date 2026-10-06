@@ -463,8 +463,8 @@
     h.push('<div class="memoria">');
     h.push('<div class="print-h"><div><b>MEMORIA DE CÁLCULO — CANASTAS PORTACABLES (CABLE MC)</b><br>Electrical cable tray fill calculations · NEC 2020 Art. 392.22(A)</div><div style="text-align:right">Sinergia Ingeniería<br>' + esc(p.fecha || '') + '</div></div>');
     h.push('<div class="page-h"><div><h1>Memoria de cálculo</h1><div class="meta">Resumen del edificio, lista de materiales y detalle de tramos por nivel.</div></div><div class="grow"></div>' +
-      '<div class="toolbar no-print"><button class="btn" data-act="csv-detalle">Exportar detalle (CSV)</button><button class="btn" data-act="csv-materiales">Exportar materiales (CSV)</button>' +
-      '<button class="btn btn-primary" data-act="imprimir">Imprimir / PDF</button></div></div>');
+      '<div class="toolbar no-print"><button class="btn btn-primary" data-act="xlsx">Descargar Excel (.xlsx)</button><button class="btn" data-act="csv-detalle">Exportar detalle (CSV)</button><button class="btn" data-act="csv-materiales">Exportar materiales (CSV)</button>' +
+      '<button class="btn" data-act="imprimir">Imprimir / PDF</button></div></div>');
 
     var t = R.total;
     h.push('<div class="kpis">' + kpi('Niveles', R.niveles.length) + kpi('Tramos con cables', t.tramos) + kpi('Cables', t.cables) +
@@ -869,6 +869,7 @@
       case 'csv-detalle': return exportarDetalle();
       case 'csv-materiales': return exportarMateriales();
       case 'imprimir': return window.print();
+      case 'xlsx': return descargarExcel();
       // ----- administración -----
       case 'admin-sub': S.adminSub = id; render(); break;
       case 'admin-add': return adminAgregar(el.getAttribute('data-col'));
@@ -965,6 +966,15 @@
     descargar('materiales_' + slug(S.proyecto.numero + '_' + S.proyecto.nombre) + '.csv', csv(filas), 'text/csv;charset=utf-8');
   }
 
+  function descargarExcel() {
+    toast('Generando Excel…');
+    ExportExcel.generar(S.proyecto, S.catalogo).then(function (buf) {
+      descargar('memoria_canastas_' + slug(S.proyecto.numero + '_' + S.proyecto.nombre) + '.xlsx', buf,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      toast('Excel descargado');
+    }).catch(function (err) { console.error(err); toast('No se pudo generar el Excel: ' + err.message); });
+  }
+
   /* ================= Proyectos (menú) ================= */
   var modoArchivo = 'proyecto';
   function abrirArchivo(modo) { modoArchivo = modo; $('#fileInput').value = ''; $('#fileInput').click(); }
@@ -1019,6 +1029,7 @@
     } else if (a === 'exportar') {
       descargar('proyecto_' + slug(S.proyecto.numero + '_' + S.proyecto.nombre) + '.json', JSON.stringify(S.proyecto, null, 2));
     } else if (a === 'importar') abrirArchivo('proyecto');
+    else if (a === 'xlsx') descargarExcel();
     else if (a === 'eliminar') {
       confirmar('Eliminar proyecto', '¿Eliminar definitivamente «' + esc(S.proyecto.nombre) + '» de este navegador? Exporte un respaldo si lo necesita.', true).then(function (ok) {
         if (!ok) return;

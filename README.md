@@ -8,7 +8,7 @@ Herramienta web (HTML + JavaScript, sin dependencias ni compilación) para dimen
 |---|---|
 | **Proyecto** | Datos del proyecto, parámetros (reserva, marca, acabado, tipo y claro por defecto, factores Sd) y **niveles del edificio**. Cada nivel que se agrega crea su propia pestaña. |
 | **Nivel (una por nivel)** | Tabla de tramos (tipo, claro, distancia, canasta seleccionada y recomendada, % NEC, % carga, % ocupación bruta, veredicto) y lista de cables por tramo. |
-| **Memoria de cálculo** | Resumen del edificio por nivel, canastas por tamaño (metros y piezas), cables por tipo (longitud y peso estimados) y detalle de cada tramo en uso. Se imprime o se guarda en PDF; se exporta a CSV. |
+| **Memoria de cálculo** | Resumen del edificio por nivel, canastas por tamaño (metros y piezas), cables por tipo (longitud y peso estimados) y detalle de cada tramo en uso. Se imprime o se guarda en PDF; se exporta a CSV y a **Excel (.xlsx) con fórmulas vivas**. |
 | **Ayuda** | Instrucciones y tabla NEC 392.22(A) de referencia. |
 | **Administración** | Solo con PIN de administrador: marcas, canastas (tamaños y cargas), cables, fabricantes, tipos de canasta, reservas y tabla NEC. |
 
@@ -39,6 +39,10 @@ js/store.js             Capa de datos — hoy localStorage; en la fase 2, Supaba
 js/auth.js              Permiso de administrador — hoy PIN local; en la fase 2, Supabase Auth
 js/app.js               Interfaz
 ```
+
+## Descarga a Excel
+
+*Memoria de cálculo → Descargar Excel* (o *Proyecto ▾ → Descargar Excel*) genera un libro con la misma estructura del original: AYUDA, Proyecto, Resumen, Detalle, una pestaña por nivel entre INICIO_NIVELES y FIN_NIVELES, NEC 392.22 y los catálogos ocultos (Canastas, Cables, Listas). Todas las celdas de resultado son fórmulas, con listas desplegables y semáforos; un nivel copiado en Excel se suma a los totales del Resumen. Funciona en cualquier Excel 2010 o posterior. Requiere internet al exportar (carga ExcelJS desde cdnjs).
 
 ## Validación contra el Excel
 

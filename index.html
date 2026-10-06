@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Canastas MC — Memoria de cálculo</title>
   <meta name="description" content="Memoria de cálculo de canastas portacables para cable MC según NEC 2020 Art. 392.22(A).">
-  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="stylesheet" href="css/styles.css?v=3">
 </head>
 <body>
   <header class="topbar">
@@ -26,6 +26,7 @@
           <button data-accion="nuevo">Nuevo proyecto</button>
           <button data-accion="duplicar">Duplicar proyecto</button>
           <button data-accion="ejemplo">Cargar proyecto de ejemplo</button>
+          <button data-accion="xlsx">Descargar Excel (.xlsx)</button>
           <button data-accion="exportar">Exportar proyecto (.json)</button>
           <button data-accion="importar">Importar proyecto (.json)</button>
           <hr>
@@ -64,10 +65,11 @@
   <input type="file" id="fileInput" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/catalogo-base.js?v=2"></script>
-  <script src="js/calc.js?v=2"></script>
-  <script src="js/store.js?v=2"></script>
-  <script src="js/auth.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/catalogo-base.js?v=3"></script>
+  <script src="js/calc.js?v=3"></script>
+  <script src="js/store.js?v=3"></script>
+  <script src="js/auth.js?v=3"></script>
+  <script src="js/excel-export.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>
