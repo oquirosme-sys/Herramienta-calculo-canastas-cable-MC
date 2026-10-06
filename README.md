@@ -42,7 +42,7 @@ js/app.js               Interfaz
 
 ## Validación contra el Excel
 
-El proyecto de ejemplo carga los datos de la pestaña N01. Los resultados coinciden con el Excel: tramo 1 → recomendada 2x20 (CF 54/500), 70,04 % NEC, 12,36 % carga, «⚠ supera la reserva de diseño»; tramo 2 → recomendada 2x18 (CF 54/450), área permitida 8 991,6 mm², 59,78 % NEC, 42,24 % carga, «✔ CUMPLE»; total 80 m de 4x18 (CF 105/450).
+Los proyectos nuevos arrancan en blanco (sin datos ni niveles) para que el usuario los complete; los parámetros de cálculo traen los valores por defecto del Excel. El menú *Proyecto ▾ → Cargar proyecto de ejemplo* carga los datos de la pestaña N01. Los resultados coinciden con el Excel: tramo 1 → recomendada 2x20 (CF 54/500), 70,04 % NEC, 12,36 % carga, «⚠ supera la reserva de diseño»; tramo 2 → recomendada 2x18 (CF 54/450), área permitida 8 991,6 mm², 59,78 % NEC, 42,24 % carga, «✔ CUMPLE»; total 80 m de 4x18 (CF 105/450).
 
 ## Limitaciones actuales (fase 1)
 

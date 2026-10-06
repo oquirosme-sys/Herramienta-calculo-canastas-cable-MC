@@ -114,12 +114,12 @@
     var cat = S.catalogo;
     var marca = cat.marcas[0] || { id: '', claros: [], acabados: [] };
     return Object.assign({
-      id: uid('p'), numero: '', nombre: 'Proyecto nuevo', ubicacion: '', fecha: new Date().toISOString().slice(0, 10), elaboro: '',
+      id: uid('p'), numero: '', nombre: '', ubicacion: '', fecha: '', elaboro: '',
       parametros: {
         reserva: 0.7, claro: marca.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
         sdVentilada: 30, sdSolido: 25, marca: marca.id, acabado: marca.acabados[0] || ''
       },
-      niveles: [nuevoNivel('Nivel 1')]
+      niveles: []
     }, datos || {});
   }
   function nuevoNivel(nombre) {
@@ -133,8 +133,9 @@
   function proyectoEjemplo() {
     var cat = S.catalogo;
     var porNombre = function (lista, nombre) { return (lista.filter(function (x) { return x.nombre === nombre; })[0] || {}).id || ''; };
-    var p = nuevoProyecto({ numero: '922c', nombre: 'oficina Sinergia', ubicacion: 'Escazú' });
-    var n = p.niveles[0];
+    var p = nuevoProyecto({ numero: '922c', nombre: 'Ejemplo — oficina Sinergia', ubicacion: 'Escazú', fecha: new Date().toISOString().slice(0, 10) });
+    var n = nuevoNivel('Nivel 1');
+    p.niveles = [n];
     var t1 = { id: uid('t'), nombre: 'Ejemplo 1 — bandeja principal', tipo: 'ventilada', claro: 4.9, canasta: porNombre(cat.canastas, '4x18 (CF 105/450)'), distancia: 50 };
     var t2 = { id: uid('t'), nombre: 'Ejemplo 2 — mezcla con cables ≥ 4/0', tipo: 'ventilada', claro: 7.38, canasta: porNombre(cat.canastas, '4x18 (CF 105/450)'), distancia: 30 };
     n.tramos = [t1, t2, nuevoTramo()];
@@ -264,10 +265,10 @@
 
     h.push('<div class="card"><div class="card-h"><h2>Datos del proyecto</h2></div><div class="card-b"><div class="grid-form">');
     h.push(campo('Proyecto # / Project #', txt('numero', p.numero, 'ej. 922c')));
-    h.push(campo('Nombre / Name', txt('nombre', p.nombre)));
-    h.push(campo('Ubicación / Location', txt('ubicacion', p.ubicacion)));
+    h.push(campo('Nombre / Name', txt('nombre', p.nombre, 'Nombre del proyecto')));
+    h.push(campo('Ubicación / Location', txt('ubicacion', p.ubicacion, 'Ciudad / provincia')));
     h.push(campo('Fecha / Date', txt('fecha', p.fecha, '', 'date')));
-    h.push(campo('Elaboró / Prepared by', txt('elaboro', p.elaboro)));
+    h.push(campo('Elaboró / Prepared by', txt('elaboro', p.elaboro, 'Nombre del responsable')));
     h.push('</div></div></div>');
 
     h.push('<div class="card"><div class="card-h"><h2>Parámetros de cálculo</h2><span class="sub">Aplican a todo el edificio; cada tramo puede cambiar tipo y claro.</span></div><div class="card-b"><div class="grid-form">');
@@ -288,7 +289,7 @@
 
     // Niveles
     h.push('<div class="card"><div class="card-h"><h2>Niveles del edificio</h2><span class="sub">Cada nivel crea su propia pestaña para llenar los tramos y cables.</span></div><div class="card-b">');
-    if (!R.niveles.length) h.push('<div class="empty">Aún no hay niveles. Agregue el primero abajo.</div>');
+    if (!R.niveles.length) h.push('<div class="empty">Aún no hay niveles. Escriba el nombre del primer nivel abajo (ej. N01, S1, AZOTEA) o genérelos en serie.</div>');
     h.push('<div class="niveles-list">');
     R.niveles.forEach(function (nv, i) {
       var r = nv.resumen, n = nv.nivel;
@@ -1008,7 +1009,9 @@
     var a = b.getAttribute('data-accion');
     if (a === 'nuevo') {
       dialogo({ titulo: 'Nuevo proyecto', html: '<div class="field"><label>Proyecto #</label><input name="numero"></div><div class="field" style="margin-top:10px"><label>Nombre</label><input name="nombre" required></div>', ok: 'Crear' })
-        .then(function (v) { if (v) abrirProyecto(nuevoProyecto({ numero: v.numero, nombre: v.nombre || 'Proyecto nuevo' }), true).then(function () { S.vista = 'proyecto'; render(); }); });
+        .then(function (v) { if (v) abrirProyecto(nuevoProyecto({ numero: v.numero, nombre: v.nombre || '' }), true).then(function () { S.vista = 'proyecto'; render(); }); });
+    } else if (a === 'ejemplo') {
+      abrirProyecto(proyectoEjemplo(), true).then(function () { S.vista = 'proyecto'; render(); toast('Proyecto de ejemplo (pestaña N01 del Excel) cargado'); });
     } else if (a === 'duplicar') {
       var c = JSON.parse(JSON.stringify(S.proyecto));
       c.id = uid('p'); c.nombre = c.nombre + ' (copia)';
@@ -1065,9 +1068,9 @@
     return Store.listarProyectos();
   }).then(function (idx) {
     S.indice = idx;
-    if (!idx.length) return abrirProyecto(proyectoEjemplo(), true);
+    if (!idx.length) return abrirProyecto(nuevoProyecto(), true);
     var actual = Store.getProyectoActual();
     var id = idx.some(function (p) { return p.id === actual; }) ? actual : idx[0].id;
-    return Store.getProyecto(id).then(function (p) { return abrirProyecto(p || proyectoEjemplo(), !p); });
+    return Store.getProyecto(id).then(function (p) { return abrirProyecto(p || nuevoProyecto(), !p); });
   });
 })();
