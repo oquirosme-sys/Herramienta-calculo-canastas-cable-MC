@@ -1063,10 +1063,28 @@
     cat.marcas.forEach(function (m) { if (!m.largoPieza) m.largoPieza = 3; });
     return cat;
   }
+  /* La versión inicial creaba automáticamente un proyecto de ejemplo (922c · oficina Sinergia).
+   * Se elimina una sola vez, y solo si el usuario no lo modificó. */
+  function limpiarEjemploAntiguo(idx) {
+    var K = 'cmc.limpiezaEjemplo';
+    if (localStorage.getItem(K)) return idx;
+    localStorage.setItem(K, '1');
+    var candidatos = idx.filter(function (x) { return x.numero === '922c' && x.nombre === 'oficina Sinergia'; });
+    return Promise.all(candidatos.map(function (x) {
+      return Store.getProyecto(x.id).then(function (p) {
+        var nv = p && p.niveles;
+        var intacto = p && !p.elaboro && nv.length === 1 && nv[0].nombre === 'Nivel 1' && nv[0].cables.length === 4 &&
+          nv[0].tramos.length === 3 && nv[0].tramos[0].nombre === 'Ejemplo 1 — bandeja principal' &&
+          nv[0].tramos[1].nombre === 'Ejemplo 2 — mezcla con cables ≥ 4/0' && !nv[0].tramos[2].nombre;
+        return intacto ? Store.eliminarProyecto(x.id) : null;
+      });
+    })).then(function () { return Store.listarProyectos(); });
+  }
+
   Store.getCatalogo().then(function (cat) {
     S.catalogo = migrarCatalogo(cat);
     return Store.listarProyectos();
-  }).then(function (idx) {
+  }).then(limpiarEjemploAntiguo).then(function (idx) {
     S.indice = idx;
     if (!idx.length) return abrirProyecto(nuevoProyecto(), true);
     var actual = Store.getProyectoActual();
