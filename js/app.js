@@ -11,7 +11,7 @@
     vista: 'proyecto',
     filtroTramo: {},
     adminSub: 'canastas',
-    adminFiltro: { marca: '', texto: '', fab: '', clase: '' }
+    adminFiltro: { serie: '', texto: '', fab: '', clase: '' }
   };
   var R = null; // resultados del cálculo (se recalculan en cada render)
 
@@ -51,6 +51,12 @@
     var cls = errLim !== null && v > errLim ? 'error' : (warnLim !== null && v > warnLim ? 'warn' : '');
     var w = Math.max(0, Math.min(100, v * 100));
     return '<div class="pct ' + cls + '"><span>' + fmtPct(v) + '</span><div class="bar"><i style="width:' + w + '%"></i></div></div>';
+  }
+  /* Llenado real con el semáforo TIA-569 / BICSI · Sinergia (ok · alerta · warn · error) */
+  function pctReal(v, estado) {
+    if (v === null || v === undefined) return '';
+    var w = Math.max(0, Math.min(100, v * 100));
+    return '<div class="pct ' + (estado === 'ok' ? '' : estado) + '"><span>' + fmtPct(v) + '</span><div class="bar"><i style="width:' + w + '%"></i></div></div>';
   }
   function toast(msg) {
     var t = $('#toast');
@@ -106,27 +112,53 @@
   }
 
   /* ================= Modelo ================= */
-  function marcaActual() {
-    var p = S.proyecto.parametros;
-    return S.catalogo.marcas.filter(function (m) { return m.id === p.marca; })[0] || S.catalogo.marcas[0] || { claros: [], acabados: [] };
+  var VACIA = { id: '', marca: '', sistema: 'canasta', nombre: '', claros: [], acabados: [] };
+  function serieDe(id) { return S.catalogo.series.filter(function (s) { return s.id === id; })[0] || null; }
+  /* Línea de producto por defecto del proyecto (canasta / escalera / ducto de una marca) */
+  function serieActual() { return serieDe(S.proyecto.parametros.serie) || S.catalogo.series[0] || VACIA; }
+  function marcaDe(id) { return S.catalogo.marcas.filter(function (m) { return m.id === id; })[0] || { nombre: '' }; }
+  function nombreSerie(s) { return s ? (marcaDe(s.marca).nombre + ' · ' + (Calc.SISTEMAS[s.sistema] || s.sistema) + (s.nombre ? ' — ' + s.nombre : '')) : ''; }
+  /* Opciones de línea de producto agrupadas por marca */
+  function opcionesSeries(sel, extra) {
+    var grupos = {};
+    S.catalogo.series.forEach(function (s) { (grupos[s.marca] = grupos[s.marca] || []).push(s); });
+    return (extra || '') + S.catalogo.marcas.filter(function (m) { return grupos[m.id]; }).map(function (m) {
+      return '<optgroup label="' + esc(m.nombre) + '">' + grupos[m.id].map(function (s) {
+        return opt(s.id, (Calc.SISTEMAS[s.sistema] || s.sistema) + (s.nombre ? ' — ' + s.nombre : ''), s.id === sel);
+      }).join('') + '</optgroup>';
+    }).join('');
   }
   function nuevoProyecto(datos) {
     var cat = S.catalogo;
-    var marca = cat.marcas[0] || { id: '', claros: [], acabados: [] };
+    var serie = cat.series[0] || VACIA;
     return Object.assign({
       id: uid('p'), numero: '', nombre: '', ubicacion: '', fecha: '', elaboro: '',
       parametros: {
-        reserva: 0.7, claro: marca.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
-        sdVentilada: 30, sdSolido: 25, marca: marca.id, acabado: marca.acabados[0] || '',
-        fabricanteCable: (cat.fabricantesCable[0] || {}).id || ''
+        reserva: 0.7, claro: serie.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
+        sdVentilada: 30, sdSolido: 25, serie: serie.id, acabado: serie.acabados[0] || '',
+        fabricanteCable: (cat.fabricantesCable[0] || {}).id || '',
+        llenadoAlerta: Calc.LLENADO.alerta, llenadoSinergia: Calc.LLENADO.sinergia, llenadoMax: Calc.LLENADO.maximo,
+        ductoFactor: 0.20, ductoMaxConductores: 30
       },
       niveles: []
     }, datos || {});
   }
+  /* Proyectos guardados antes de las líneas de producto y de los criterios de llenado real */
+  function migrarProyecto(p) {
+    var par = p.parametros || (p.parametros = {});
+    if (!par.serie) {
+      var s = S.catalogo.series.filter(function (x) { return x.marca === par.marca && x.sistema === 'canasta'; })[0] || S.catalogo.series[0] || VACIA;
+      par.serie = s.id;
+    }
+    var def = { llenadoAlerta: Calc.LLENADO.alerta, llenadoSinergia: Calc.LLENADO.sinergia, llenadoMax: Calc.LLENADO.maximo, ductoFactor: 0.20, ductoMaxConductores: 30 };
+    Object.keys(def).forEach(function (k) { if (par[k] === undefined || par[k] === '') par[k] = def[k]; });
+    if (par.fabricanteCable === undefined) par.fabricanteCable = marcaCablePorUso(p);
+    return p;
+  }
   function nuevoNivel(nombre) {
     return { id: uid('n'), nombre: nombre, tramos: [nuevoTramo(), nuevoTramo(), nuevoTramo()], cables: [] };
   }
-  function nuevoTramo() { return { id: uid('t'), nombre: '', tipo: '', claro: '', canasta: '', distancia: '' }; }
+  function nuevoTramo() { return { id: uid('t'), nombre: '', serie: '', tipo: '', claro: '', canasta: '', distancia: '' }; }
   function nuevaLinea(tramoId) { return { id: uid('l'), tramo: tramoId || '', cable: '', cant: '' }; }
   function nivelPorId(id) { return S.proyecto.niveles.filter(function (n) { return n.id === id; })[0]; }
 
@@ -309,20 +341,20 @@
   function renderTabs() {
     var h = [];
     var tab = function (id, label, extra, cls) {
-      h.push('<button class="tab ' + (cls || '') + (S.vista === id ? ' active' : '') + '" data-vista="' + esc(id) + '" role="tab">' + (extra || '') + esc(label) + '</button>');
+      h.push('<button class="seccion ' + (cls || '') + (S.vista === id ? ' activa' : '') + '" data-vista="' + esc(id) + '" role="tab">' + (extra || '') + esc(label) + '</button>');
     };
     tab('proyecto', 'Proyecto');
-    h.push('<span class="tab-sep"></span>');
+    h.push('<span class="seccion-sep"></span>');
     R.niveles.forEach(function (nv) {
       var r = nv.resumen;
       var dot = r.errores ? 'error' : r.advertencias ? 'warn' : r.tramos ? 'ok' : '';
       tab('nivel:' + nv.nivel.id, nv.nivel.nombre || '(sin nombre)', dot ? '<span class="dot ' + dot + '"></span>' : '');
     });
-    h.push('<button class="tab tab-add" data-act="nivel-agregar-rapido" title="Agregar nivel">＋ Nivel</button>');
-    h.push('<span class="tab-sep"></span>');
+    h.push('<button class="seccion seccion-agregar" data-act="nivel-agregar-rapido" title="Agregar nivel">＋ Nivel</button>');
+    h.push('<span class="seccion-sep"></span>');
     tab('memoria', 'Memoria de cálculo');
     tab('ayuda', 'Ayuda');
-    if (Auth.esAdmin()) tab('admin', 'Administración', '', 'tab-admin');
+    if (Auth.esAdmin()) tab('admin', 'Administración', '', 'seccion-admin');
     $('#tabs').innerHTML = h.join('');
     var adm = Auth.esAdmin();
     $('#btnAdmin').classList.toggle('on', adm);
@@ -332,7 +364,7 @@
 
   /* ================= Vista: Proyecto ================= */
   function vistaProyecto() {
-    var p = S.proyecto, par = p.parametros, cat = S.catalogo, marca = marcaActual();
+    var p = S.proyecto, par = p.parametros, cat = S.catalogo, serie = serieActual();
     var campo = function (label, html, hint) {
       return '<div class="field"><label>' + label + '</label>' + html + (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
     };
@@ -357,21 +389,43 @@
     h.push('<div class="card"><div class="card-h"><h2>Parámetros de cálculo</h2><span class="sub">Aplican a todo el edificio; cada tramo puede cambiar tipo y claro.</span></div><div class="card-b"><div class="grid-form">');
     h.push(campo('Reserva de diseño (% máx. del área NEC)',
       '<select data-bind="par.reserva" data-type="num">' + cat.reservas.map(function (r) { return opt(r, fmt(r * 100, 0) + ' %', Number(par.reserva) === r); }).join('') + '</select>', reservaTxt));
-    h.push(campo('Marca de canasta / Brand',
-      '<select data-bind="par.marca">' + cat.marcas.map(function (m) { return opt(m.id, m.nombre, m.id === par.marca); }).join('') + '</select>', esc(marca.nota || '')));
+    h.push(campo('Canalización por defecto (marca · tipo)',
+      '<select data-bind="par.serie">' + opcionesSeries(par.serie) + '</select>', esc(serie.nota || 'Cada tramo puede usar otra canalización (canasta, escalera o ducto cuadrado).')));
     h.push(campo('Acabado / Finish',
-      '<select data-bind="par.acabado">' + (marca.acabados || []).map(function (a) { return opt(a, a, a === par.acabado); }).join('') + '</select>', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ).'));
+      '<select data-bind="par.acabado">' + (serie.acabados || []).map(function (a) { return opt(a, a, a === par.acabado); }).join('') + '</select>', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ).'));
     h.push(campo('Marca de cable / Cable brand',
       '<select data-bind="par.fabricanteCable">' + cat.fabricantesCable.map(function (f) { return opt(f.id, f.nombre, f.id === par.fabricanteCable); }).join('') + '</select>',
       'Una sola marca para todo el proyecto. En cada nivel el cable se elige por material, # de conductores y calibre.'));
     h.push(campo('Tipo de canasta por defecto',
-      '<select data-bind="par.tipo">' + cat.tiposCanasta.map(function (t) { return opt(t.id, t.nombre, t.id === par.tipo); }).join('') + '</select>', 'Escalera / ventilada usa Col. 1-2 y 30·Sd; fondo sólido usa Col. 3-4 y 25·Sd.'));
+      '<select data-bind="par.tipo">' + cat.tiposCanasta.map(function (t) { return opt(t.id, t.nombre, t.id === par.tipo); }).join('') + '</select>', 'Escalera / ventilada usa Col. 1-2 y 30·Sd; fondo sólido usa Col. 3-4 y 25·Sd. No aplica al ducto cuadrado.'));
     h.push(campo('Claro entre soportes por defecto (ft)',
-      '<select data-bind="par.claro" data-type="num">' + (marca.claros || []).map(function (c) { return opt(c, fmt(c, 2) + ' ft (' + fmt(c * 0.3048, 2) + ' m)', Number(par.claro) === Number(c)); }).join('') + '</select>', 'Claros de la tabla de carga del fabricante.'));
-    h.push(campo('Altura máxima de cómputo (mm)', '<input data-bind="par.altoMax" data-type="num" value="' + esc(par.altoMax) + '">', 'NEC 392.22(A): máx. 150 mm (6 in). Solo afecta la ocupación bruta.'));
+      '<select data-bind="par.claro" data-type="num">' + (serie.claros || []).map(function (c) { return opt(c, fmt(c, 2) + ' ft (' + fmt(c * 0.3048, 2) + ' m)', Number(par.claro) === Number(c)); }).join('') + '</select>',
+      'Claros de la tabla de carga de la línea por defecto. En otras líneas se usa su primer claro si este no existe.'));
+    h.push(campo('Altura máxima de cómputo (mm)', '<input data-bind="par.altoMax" data-type="num" value="' + esc(par.altoMax) + '">', 'NEC 392.22(A): máx. 150 mm (6 in). Afecta el llenado real de canastas y escaleras.'));
     h.push(campo('Factor Sd — escalera / ventilada', '<input data-bind="par.sdVentilada" data-type="num" value="' + esc(par.sdVentilada) + '">', 'Col. 2 base − 30·Sd (Sd = Σ diámetros ≥ 4/0, mm).'));
     h.push(campo('Factor Sd — fondo sólido', '<input data-bind="par.sdSolido" data-type="num" value="' + esc(par.sdSolido) + '">', 'Col. 4 base − 25·Sd.'));
+    h.push(campo('Ducto cuadrado — llenado NEC 376.22 (%)', '<input data-bind="par.ductoFactor" data-type="pct" value="' + esc(fmt(par.ductoFactor * 100, 0)) + '">', 'NEC 376.22(A): la suma de áreas de los conductores ≤ 20 % de la sección interior del ducto.'));
+    h.push(campo('Ducto cuadrado — máx. conductores portadores', '<input data-bind="par.ductoMaxConductores" data-type="num" value="' + esc(par.ductoMaxConductores) + '">', 'NEC 376.22(B): con más de 30 conductores portadores de corriente se aplican los factores de ajuste de 310.15(C)(1).'));
     h.push('</div></div></div>');
+
+    // Criterios de llenado real
+    var pctIn = function (bind, v) { return '<input data-bind="par.' + bind + '" data-type="pct" value="' + esc(fmt(v * 100, 0)) + '">'; };
+    h.push('<div class="card"><div class="card-h"><h2>Criterio de llenado real — TIA-569 / BICSI · Sinergia</h2><span class="sub">Llenado real = área de todos los cables ÷ área interior útil de la canalización.</span></div><div class="card-b">');
+    h.push('<div class="grid-form">');
+    h.push(campo('<span class="sw alerta"></span>Alerta desde (%)', pctIn('llenadoAlerta', par.llenadoAlerta), 'Amarillo: planifique la reserva para crecimiento.'));
+    h.push(campo('<span class="sw warn"></span>Criterio Sinergia de prellenado (%)', pctIn('llenadoSinergia', par.llenadoSinergia), 'Naranja (⚠): supera el prellenado de diseño de Sinergia.'));
+    h.push(campo('<span class="sw error"></span>Máximo TIA-569 / BICSI (%)', pctIn('llenadoMax', par.llenadoMax), 'Rojo (❌): el tramo NO CUMPLE.'));
+    h.push('</div>');
+    h.push('<div class="reco-box"><b>Recomendaciones (TIA-569 / BICSI)</b><ul>' +
+      '<li><span class="sw ok"></span>Menos de ' + fmt(par.llenadoAlerta * 100, 0) + ' %: llenado bajo, con holgura para crecimiento.</li>' +
+      '<li><span class="sw alerta"></span>' + fmt(par.llenadoAlerta * 100, 0) + ' % – ' + fmt(par.llenadoSinergia * 100, 0) + ' %: llenado medio; confirme que la reserva prevista cubre el crecimiento esperado.</li>' +
+      '<li><span class="sw warn"></span>' + fmt(par.llenadoSinergia * 100, 0) + ' % – ' + fmt(par.llenadoMax * 100, 0) + ' %: supera el criterio Sinergia de prellenado (' + fmt(par.llenadoSinergia * 100, 0) + ' %); evalúe una canalización mayor o dividir el tramo.</li>' +
+      '<li><span class="sw error"></span>Más de ' + fmt(par.llenadoMax * 100, 0) + ' %: excede el llenado máximo de la canalización según TIA-569 / BICSI; cambie de tamaño o divida el tramo.</li>' +
+      '<li>Profundidad útil de cómputo: máx. 150 mm (6 in) en canastas y escaleras (NEC 392.22(A)).</li>' +
+      '<li>Verifique además, contra la edición vigente de ANSI/TIA-569 y del manual BICSI TDMM, la separación entre cables de potencia y de telecomunicaciones, los radios de curvatura y la soportería.</li>' +
+      '</ul></div>');
+    h.push('</div></div>');
+
 
     // Niveles
     h.push('<div class="card"><div class="card-h"><h2>Niveles del edificio</h2><span class="sub">Cada nivel crea su propia pestaña para llenar los tramos y cables.</span></div><div class="card-b">');
@@ -406,15 +460,14 @@
   /* ================= Vista: Nivel ================= */
   function vistaNivel(nivel) {
     var nv = R.niveles.filter(function (x) { return x.nivel.id === nivel.id; })[0];
-    var par = S.proyecto.parametros, cat = S.catalogo, marca = marcaActual();
+    var par = S.proyecto.parametros, cat = S.catalogo, serieDef = serieActual();
     var tipoDef = (cat.tiposCanasta.filter(function (t) { return t.id === par.tipo; })[0] || {}).nombre || '';
-    var canastasMarca = Calc.canastasDeMarca(R.cx, par.marca);
     var r = nv.resumen;
     var h = [];
 
     h.push('<div class="page-h"><div><h1>' + esc(nivel.nombre || '(sin nombre)') + '</h1><div class="meta">' +
       esc((S.proyecto.numero ? S.proyecto.numero + ' · ' : '') + S.proyecto.nombre) + ' · Reserva ' + fmt(par.reserva * 100, 0) + ' % · ' +
-      esc(tipoDef) + ' · claro ' + fmt(par.claro, 2) + ' ft · ' + esc(marca.nombre) + ' ' + esc(par.acabado) + '</div></div>' +
+      esc(nombreSerie(serieDef)) + ' ' + esc(par.acabado) + ' · ' + esc(tipoDef) + ' · claro ' + fmt(par.claro, 2) + ' ft</div></div>' +
       '<div class="grow"></div><div class="toolbar"><label class="sub" style="font-size:12px;color:var(--ink-3)">Nombre del nivel</label>' +
       '<input class="in" style="width:200px" data-nv="' + nivel.id + '|nombre" value="' + esc(nivel.nombre) + '"></div></div>');
 
@@ -422,50 +475,53 @@
       kpi('Tramos con cables', r.tramos) + kpi('Cables', r.cables) +
       kpi('Errores ❌', r.errores, r.errores ? 'error' : '') + kpi('Advertencias ⚠', r.advertencias, r.advertencias ? 'warn' : '') +
       kpi('Longitud (m)', fmt(r.longitud, 1)) + kpi('Máx % NEC', fmtPct(r.maxNec), r.maxNec > 1 ? 'error' : r.maxNec > par.reserva ? 'warn' : '') +
-      kpi('Máx % carga', fmtPct(r.maxCarga), r.maxCarga > 1 ? 'error' : '') + '</div>');
+      kpi('Máx % carga', fmtPct(r.maxCarga), r.maxCarga > 1 ? 'error' : '') +
+      kpi('Máx % llenado real', fmtPct(r.maxReal), Calc.estadoLlenado(r.maxReal, par)) + '</div>');
 
     // ---- Tramos ----
-    h.push('<div class="card"><div class="card-h"><h2>Tramos de canasta del nivel</h2><span class="sub">Cable tray segments</span><span class="grow"></span>' +
+    h.push('<div class="card"><div class="card-h"><h2>Tramos de canalización del nivel</h2><span class="sub">Canasta · escalera · ducto cuadrado</span><span class="grow"></span>' +
       '<button class="btn btn-primary btn-sm" data-act="tramo-agregar" data-nivel="' + nivel.id + '">＋ Agregar tramo</button></div>');
     h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead>');
-    h.push('<tr><th class="grp" colspan="7">Entrada</th><th class="grp" colspan="14">Resultados</th><th class="grp"></th></tr>');
-    h.push('<tr><th>#</th><th class="in-col">Sección o tramo</th><th class="in-col">Tipo de canasta</th><th class="in-col">Claro (ft)</th><th class="in-col">Dist. (m)</th>' +
-      '<th class="in-col">Canasta seleccionada</th><th>Canasta recomendada*</th>' +
-      '<th class="n">Cables</th><th class="n">Área cables &lt; 4/0 (mm²)</th><th class="n">Σ diám. ≥ 4/0 Sd (mm)</th><th>Caso NEC 392.22(A)</th>' +
+    h.push('<tr><th class="grp" colspan="8">Entrada</th><th class="grp" colspan="13">Resultados</th><th class="grp" colspan="2"></th></tr>');
+    h.push('<tr><th>#</th><th class="in-col">Sección o tramo</th><th class="in-col">Canalización</th><th class="in-col">Tipo (NEC 392)</th><th class="in-col">Claro (ft)</th><th class="in-col">Dist. (m)</th>' +
+      '<th class="in-col">Tamaño seleccionado</th><th>Tamaño recomendado*</th>' +
+      '<th class="n">Cables</th><th class="n">Área cables &lt; 4/0 (mm²)</th><th class="n">Σ diám. ≥ 4/0 Sd (mm)</th><th>Caso NEC</th>' +
       '<th class="n">Área permitida NEC (mm²)</th><th class="n">% llenado NEC</th><th class="n">Carga cables (lb/ft)</th><th class="n">Carga máx. (lb/ft)</th>' +
-      '<th class="n">% carga</th><th class="n">% ocup. bruta+</th><th>Veredicto</th><th>Ref. fabricante seleccionada</th><th>Ref. recomendada</th><th></th><th></th></tr></thead><tbody>');
-    if (!nv.tramos.length) h.push('<tr><td colspan="22" class="empty">Sin tramos. Use «Agregar tramo».</td></tr>');
+      '<th class="n">% carga</th><th class="n">% llenado real+</th><th>Veredicto</th><th>Ref. fabricante seleccionada</th><th>Ref. recomendada</th><th></th><th></th></tr></thead><tbody>');
+    if (!nv.tramos.length) h.push('<tr><td colspan="23" class="empty">Sin tramos. Use «Agregar tramo».</td></tr>');
     nv.tramos.forEach(function (t, i) {
-      var tr = t.tramo, k = nivel.id + '|' + tr.id + '|';
-      var tipoSel = '<select class="cell w-m" data-t="' + k + 'tipo">' + opt('', '(defecto) ' + tipoDef, !tr.tipo) +
+      var tr = t.tramo, k = nivel.id + '|' + tr.id + '|', serie = t.serie, ducto = t.sistema === 'ducto';
+      var serieSel = '<select class="cell w-l" data-t="' + k + 'serie">' + opcionesSeries(tr.serie, opt('', '(defecto) ' + nombreSerie(serieDef), !tr.serie)) + '</select>';
+      var tipoSel = ducto ? '<span class="muted">n/a</span>' : '<select class="cell w-m" data-t="' + k + 'tipo">' + opt('', '(defecto) ' + tipoDef, !tr.tipo) +
         cat.tiposCanasta.map(function (x) { return opt(x.id, x.nombre, x.id === tr.tipo); }).join('') + '</select>';
-      var claros = (marca.claros || []).slice();
+      var claros = (serie.claros || []).map(Number);
       if (tr.claro !== '' && claros.indexOf(Number(tr.claro)) < 0) claros.push(Number(tr.claro));
-      var claroSel = '<select class="cell w-s" data-t="' + k + 'claro" data-type="num">' + opt('', '(def.) ' + fmt(par.claro, 2), tr.claro === '') +
+      var claroDef = Calc.claroEfectivo(serie, { claro: '' }, par);
+      var claroSel = '<select class="cell w-s" data-t="' + k + 'claro" data-type="num">' + opt('', '(def.) ' + fmt(claroDef, 2), tr.claro === '') +
         claros.map(function (c) { return opt(c, fmt(c, 2), Number(tr.claro) === Number(c) && tr.claro !== ''); }).join('') + '</select>';
-      var lista = canastasMarca.slice();
+      var lista = Calc.canastasDeSerie(R.cx, serie.id);
       if (t.seleccionada && lista.indexOf(t.seleccionada) < 0) lista.unshift(t.seleccionada);
       var canSel = '<select class="cell w-m" data-t="' + k + 'canasta"><option value="">— seleccione —</option>' +
-        lista.map(function (c) { return opt(c.id, c.nombre + (c.marca !== par.marca ? ' (otra marca)' : ''), c.id === tr.canasta); }).join('') + '</select>';
+        lista.map(function (c) { return opt(c.id, c.nombre + (c.serie !== serie.id ? ' (otra línea)' : ''), c.id === tr.canasta); }).join('') + '</select>';
       var reco = t.recomendada
-        ? '<span class="reco">' + esc(t.recomendadaTexto) + (t.recomendada.id !== tr.canasta ? ' <button class="btn btn-sm use" data-act="tramo-usar-reco" data-nivel="' + nivel.id + '" data-id="' + tr.id + '" title="Usar la recomendada como seleccionada">usar</button>' : ' <span class="t-ok">✔</span>') + '</span>'
+        ? '<span class="reco">' + esc(t.recomendadaTexto) + (t.recomendada.id !== tr.canasta ? ' <button class="btn btn-sm use" data-act="tramo-usar-reco" data-nivel="' + nivel.id + '" data-id="' + tr.id + '" title="Usar el recomendado como seleccionado">usar</button>' : ' <span class="t-ok">✔</span>') + '</span>'
         : (t.recomendadaTexto ? '<span class="t-err">' + esc(t.recomendadaTexto) + '</span>' : '');
       var filtrado = S.filtroTramo[nivel.id] === tr.id;
       h.push('<tr' + (filtrado ? ' class="sel"' : '') + '><td><span class="num-badge">' + (i + 1) + '</span></td>' +
         '<td><input class="cell w-l" data-t="' + k + 'nombre" value="' + esc(tr.nombre) + '" placeholder="Tramo ' + (i + 1) + '"></td>' +
-        '<td>' + tipoSel + '</td><td>' + claroSel + '</td>' +
+        '<td>' + serieSel + '</td><td>' + tipoSel + '</td><td>' + claroSel + '</td>' +
         '<td><input class="cell w-xs" data-t="' + k + 'distancia" data-type="num" value="' + esc(tr.distancia) + '"></td>' +
         '<td>' + canSel + '</td><td>' + reco + '</td>' +
         '<td class="n"><a href="#" data-act="filtrar-tramo" data-nivel="' + nivel.id + '" data-id="' + tr.id + '" title="Ver cables de este tramo">' + t.cables + '</a></td>' +
-        '<td class="n">' + (t.cables ? fmt(t.areaMenor, 1) : '') + '</td>' +
-        '<td class="n">' + (t.cables ? fmt(t.sd, 2) : '') + '</td>' +
+        '<td class="n">' + (t.cables && !ducto ? fmt(t.areaMenor, 1) : '') + '</td>' +
+        '<td class="n">' + (t.cables && !ducto ? fmt(t.sd, 2) : '') + '</td>' +
         '<td class="muted">' + esc(t.casoTexto) + '</td>' +
         '<td class="n">' + (t.areaPermitida === 'n/a' ? 'n/a' : fmt(t.areaPermitida, 1)) + '</td>' +
         '<td class="n">' + pctCell(t.pctNec, Number(par.reserva), 1) + '</td>' +
         '<td class="n">' + (t.cables ? fmt(t.peso, 2) : '') + '</td>' +
         '<td class="n">' + fmt(t.cargaMax, 2) + '</td>' +
         '<td class="n">' + pctCell(t.pctCarga, null, 1) + '</td>' +
-        '<td class="n">' + pctCell(t.pctBruta, t.factorFab, null) + '</td>' +
+        '<td class="n">' + pctReal(t.pctBruta, t.estadoBruta) + '</td>' +
         '<td>' + chip(t.veredicto, t.estado) + '</td>' +
         '<td class="muted">' + esc(t.refSeleccionada) + '</td>' +
         '<td class="muted">' + esc(t.refRecomendada) + '</td>' +
@@ -473,8 +529,9 @@
         '<td><button class="btn-icon del" tabindex="-1" data-act="tramo-eliminar" data-nivel="' + nivel.id + '" data-id="' + tr.id + '" title="Eliminar tramo">✕</button></td></tr>');
     });
     h.push('</tbody></table></div>');
-    h.push('<div class="legend">* Recomendada: la de menor sección del catálogo de la marca que cumple a la vez NEC 392.22(A)(1) con la reserva de diseño (y Σ diámetros ≤ ancho para cables ≥ 4/0) y la carga máxima del fabricante para el claro del tramo. ' +
-      'La decisión final es la «seleccionada». + Ocupación bruta: área de todos los cables ÷ (ancho real × min(alto, ' + esc(par.altoMax) + ' mm)); solo referencia del fabricante.</div>');
+    h.push('<div class="legend">* Recomendado: el de menor sección de la línea del tramo que cumple a la vez el área NEC con la reserva de diseño (canasta/escalera: 392.22(A)(1) y Σ diámetros ≤ ancho para ≥ 4/0; ducto: 376.22, ≤ ' + fmt(par.ductoFactor * 100, 0) + ' % de la sección) la carga máxima del fabricante para el claro y el llenado real ≤ ' + fmt(par.llenadoSinergia * 100, 0) + ' % (criterio Sinergia). ' +
+      'La decisión final es la «seleccionada». + Llenado real: área de todos los cables ÷ área interior útil (canasta/escalera: ancho real × min(alto, ' + esc(par.altoMax) + ' mm); ducto: sección completa). ' +
+      '<span class="sw ok"></span>&lt; ' + fmt(par.llenadoAlerta * 100, 0) + ' % · <span class="sw alerta"></span>' + fmt(par.llenadoAlerta * 100, 0) + '–' + fmt(par.llenadoSinergia * 100, 0) + ' % · <span class="sw warn"></span>&gt; ' + fmt(par.llenadoSinergia * 100, 0) + ' % criterio Sinergia · <span class="sw error"></span>&gt; ' + fmt(par.llenadoMax * 100, 0) + ' % TIA-569 / BICSI.</div>');
     h.push('</div></div>');
 
     // ---- Cables ----
@@ -547,12 +604,14 @@
 
   /* ================= Vista: Memoria de cálculo ================= */
   function vistaMemoria() {
-    var p = S.proyecto, par = p.parametros, cat = S.catalogo, marca = marcaActual();
+    var p = S.proyecto, par = p.parametros, cat = S.catalogo, serieDef = serieActual();
     var tipoDef = (cat.tiposCanasta.filter(function (t) { return t.id === par.tipo; })[0] || {}).nombre || '';
-    var largo = Number(marca.largoPieza) || 3;
+    var pc = function (v) { return fmt(v * 100, 0) + ' %'; };
     var h = [];
     h.push('<div class="memoria">');
-    h.push('<div class="print-h"><div><b>MEMORIA DE CÁLCULO — CANASTAS PORTACABLES (CABLE MC)</b><br>Electrical cable tray fill calculations · NEC 2020 Art. 392.22(A)</div><div style="text-align:right">Sinergia Ingeniería<br>' + esc(p.fecha || '') + '</div></div>');
+    h.push('<div class="print-h"><h1>Memoria de cálculo — canalizaciones portacables (cable MC)</h1><div class="sub">' +
+      esc([(p.numero ? p.numero + ' · ' : '') + (p.nombre || ''), p.ubicacion, p.fecha].filter(Boolean).join(' · ')) +
+      '<br>NEC 2020 Art. 392.22(A) y 376.22 · llenado real TIA-569 / BICSI · criterio Sinergia</div></div>');
     h.push('<div class="page-h"><div><h1>Memoria de cálculo</h1><div class="meta">Resumen del edificio, lista de materiales y detalle de tramos por nivel.</div></div><div class="grow"></div>' +
       '<div class="toolbar no-print"><button class="btn btn-primary" data-act="xlsx">Descargar Excel (.xlsx)</button><button class="btn" data-act="csv-detalle">Exportar detalle (CSV)</button><button class="btn" data-act="csv-materiales">Exportar materiales (CSV)</button>' +
       '<button class="btn" data-act="imprimir">Imprimir / PDF</button></div></div>');
@@ -561,7 +620,8 @@
     h.push('<div class="kpis">' + kpi('Niveles', R.niveles.length) + kpi('Tramos con cables', t.tramos) + kpi('Cables', t.cables) +
       kpi('Errores ❌', t.errores, t.errores ? 'error' : '') + kpi('Advertencias ⚠', t.advertencias, t.advertencias ? 'warn' : '') +
       kpi('Longitud canasta (m)', fmt(t.longitud, 1)) + kpi('Máx % NEC', fmtPct(t.maxNec), t.maxNec > 1 ? 'error' : t.maxNec > par.reserva ? 'warn' : '') +
-      kpi('Máx % carga', fmtPct(t.maxCarga), t.maxCarga > 1 ? 'error' : '') + '</div>');
+      kpi('Máx % carga', fmtPct(t.maxCarga), t.maxCarga > 1 ? 'error' : '') +
+      kpi('Máx % llenado real', fmtPct(t.maxReal), Calc.estadoLlenado(t.maxReal, par)) + '</div>');
 
     // Datos + criterios
     var fila = function (a, b) { return '<tr><td class="muted" style="width:230px">' + a + '</td><td style="white-space:normal">' + b + '</td></tr>'; };
@@ -570,43 +630,45 @@
       fila('Fecha / Date', esc(p.fecha)) + fila('Elaboró / Prepared by', esc(p.elaboro)) +
       fila('Área NEC 392.22(A)(1)', 'Cables &lt; 4/0: Σ áreas ≤ Col. 1 (ventilada) / Col. 3 (sólido). Mezcla con ≥ 4/0: Σ áreas &lt; 4/0 ≤ Col. 2 − ' + esc(par.sdVentilada) + '·Sd (ventilada) / Col. 4 − ' + esc(par.sdSolido) + '·Sd (sólido). Solo ≥ 4/0: una capa, Σ diámetros ≤ ancho.') +
       fila('Reserva de diseño', fmt(par.reserva * 100, 0) + ' % del área permitida por NEC como máximo (' + (par.reserva >= 1 ? 'sin reserva' : 'reserva de ' + fmt((1 - par.reserva) * 100, 0) + ' %') + ')') +
-      fila('Carga / claro', 'Carga real de los cables (lb/ft) ≤ carga máxima admisible de la canasta para el claro entre soportes del tramo (' + (marca.claros || []).map(function (c) { return fmt(c, 2); }).join(' / ') + ' ft).') +
-      fila('Ocupación bruta', 'Área de todos los cables ÷ (ancho interior real × min(alto, ' + esc(par.altoMax) + ' mm)). Referencia del fabricante; NO es el cumplimiento NEC.') +
+      fila('Ducto cuadrado — NEC 376.22', 'Σ áreas de todos los cables ≤ ' + pc(par.ductoFactor) + ' de la sección interior del ducto. Con más de ' + esc(par.ductoMaxConductores) + ' conductores portadores de corriente se aplican los factores de ajuste de 310.15(C)(1).') +
+      fila('Carga / claro', 'Carga real de los cables (lb/ft) ≤ carga máxima admisible del fabricante para el claro entre soportes del tramo (según la línea de producto).') +
+      fila('Llenado real — TIA-569 / BICSI · Sinergia', 'Área de todos los cables ÷ área interior útil (canasta/escalera: ancho real × min(alto, ' + esc(par.altoMax) + ' mm); ducto: sección completa). ' +
+        'Menos de ' + pc(par.llenadoAlerta) + ': adecuado · ' + pc(par.llenadoAlerta) + '–' + pc(par.llenadoSinergia) + ': alerta (amarillo) · más de ' + pc(par.llenadoSinergia) + ': supera el criterio Sinergia de prellenado (⚠) · más de ' + pc(par.llenadoMax) + ': excede el máximo TIA-569 / BICSI (❌ NO CUMPLE).') +
       fila('Tipo / claro por defecto', esc(tipoDef) + ' · ' + fmt(par.claro, 2) + ' ft') +
-      fila('Fabricante de canasta', esc(marca.nombre) + ' — acabado ' + esc(par.acabado)) +
+      fila('Canalización por defecto', esc(nombreSerie(serieDef)) + ' — acabado ' + esc(par.acabado)) +
       fila('Marca de cable', esc((cat.fabricantesCable.filter(function (f) { return f.id === par.fabricanteCable; })[0] || {}).nombre || '')) +
       fila('Limitaciones', 'No incluye ampacidad (NEC 392.80(A)), soportes (392.30) ni curvas. Cables de control/señal: fuera del chequeo de área NEC. Verifique la tabla 392.22(A) contra la edición vigente.') +
       '</tbody></table></div></section>');
 
     // Niveles
-    h.push('<section class="card"><div class="card-h"><h2>Niveles del edificio</h2><span class="sub">Building levels</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>#</th><th>Nivel / Level</th><th class="n">Tramos</th><th class="n">Cables</th><th class="n">Errores ❌</th><th class="n">Advertencias ⚠</th><th class="n">Long. (m)</th><th class="n">Máx % NEC</th><th class="n">Máx % carga</th></tr></thead><tbody>');
+    h.push('<section class="card ancha"><div class="card-h"><h2>Niveles del edificio</h2><span class="sub">Building levels</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>#</th><th>Nivel / Level</th><th class="n">Tramos</th><th class="n">Cables</th><th class="n">Errores ❌</th><th class="n">Advertencias ⚠</th><th class="n">Long. (m)</th><th class="n">Máx % NEC</th><th class="n">Máx % carga</th><th class="n">Máx % llenado real</th></tr></thead><tbody>');
     R.niveles.forEach(function (nv, i) {
       var r = nv.resumen;
       h.push('<tr><td>' + (i + 1) + '</td><td><a href="#" data-vista="nivel:' + nv.nivel.id + '">' + esc(nv.nivel.nombre) + '</a></td><td class="n">' + r.tramos + '</td><td class="n">' + r.cables + '</td>' +
         '<td class="n ' + (r.errores ? 't-err' : '') + '">' + r.errores + '</td><td class="n ' + (r.advertencias ? 't-warn' : '') + '">' + r.advertencias + '</td>' +
-        '<td class="n">' + fmt(r.longitud, 1) + '</td><td class="n">' + pctCell(r.maxNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(r.maxCarga, null, 1) + '</td></tr>');
+        '<td class="n">' + fmt(r.longitud, 1) + '</td><td class="n">' + pctCell(r.maxNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(r.maxCarga, null, 1) + '</td><td class="n">' + pctReal(r.maxReal, Calc.estadoLlenado(r.maxReal, par)) + '</td></tr>');
     });
     h.push('</tbody><tfoot><tr><td></td><td>TOTAL EDIFICIO</td><td class="n">' + t.tramos + '</td><td class="n">' + t.cables + '</td><td class="n">' + t.errores + '</td><td class="n">' + t.advertencias + '</td><td class="n">' + fmt(t.longitud, 1) +
-      '</td><td class="n">' + fmtPct(t.maxNec) + '</td><td class="n">' + fmtPct(t.maxCarga) + '</td></tr></tfoot></table></div></div></section>');
+      '</td><td class="n">' + fmtPct(t.maxNec) + '</td><td class="n">' + fmtPct(t.maxCarga) + '</td><td class="n">' + fmtPct(t.maxReal) + '</td></tr></tfoot></table></div></div></section>');
 
     // Canastas
-    h.push('<section class="card"><div class="card-h"><h2>Canastas seleccionadas — tramos por tamaño</h2><span class="sub">Lista de materiales de canasta</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Marca / Brand</th><th>Canasta seleccionada / Size</th><th>Número de parte / P/N</th><th class="n">Tramos</th><th class="n">Longitud (m)</th><th class="n">Piezas (' + fmt(largo, 1) + ' m)</th></tr></thead><tbody>');
-    if (!R.bomCanastas.length) h.push('<tr><td colspan="6" class="empty">Sin tramos con canasta seleccionada.</td></tr>');
+    h.push('<section class="card"><div class="card-h"><h2>Canalizaciones seleccionadas — tramos por tamaño</h2><span class="sub">Lista de materiales de canasta, escalera y ducto</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Marca / Brand</th><th>Tipo</th><th>Tamaño / Size</th><th>Número de parte / P/N</th><th class="n">Tramos</th><th class="n">Longitud (m)</th><th class="n">Largo de pieza (m)</th><th class="n">Piezas</th></tr></thead><tbody>');
+    if (!R.bomCanastas.length) h.push('<tr><td colspan="8" class="empty">Sin tramos con tamaño seleccionado.</td></tr>');
     var totL = 0, totP = 0;
     R.bomCanastas.forEach(function (b) {
-      var l = Number(b.marca && b.marca.largoPieza) || largo;
+      var l = Number(b.serie && b.serie.largoPieza) || 3;
       var piezas = Math.ceil(b.longitud / l);
       totL += b.longitud; totP += piezas;
-      h.push('<tr><td>' + esc(b.marca ? b.marca.nombre : '') + '</td><td>' + esc(b.canasta.nombre) + '</td><td>' + esc(b.referencia) + '</td><td class="n">' + b.tramos + '</td><td class="n">' + fmt(b.longitud, 1) + '</td><td class="n">' + piezas + '</td></tr>');
+      h.push('<tr><td>' + esc(b.marca ? b.marca.nombre : '') + '</td><td>' + esc(Calc.SISTEMAS[b.serie.sistema] || '') + '</td><td>' + esc(b.canasta.nombre) + '</td><td>' + esc(b.referencia) + '</td><td class="n">' + b.tramos + '</td><td class="n">' + fmt(b.longitud, 1) + '</td><td class="n">' + fmt(l, 2) + '</td><td class="n">' + piezas + '</td></tr>');
     });
-    h.push('</tbody>' + (R.bomCanastas.length ? '<tfoot><tr><td colspan="4">TOTAL</td><td class="n">' + fmt(totL, 1) + '</td><td class="n">' + totP + '</td></tr></tfoot>' : '') + '</table></div></div></section>');
+    h.push('</tbody>' + (R.bomCanastas.length ? '<tfoot><tr><td colspan="5">TOTAL</td><td class="n">' + fmt(totL, 1) + '</td><td></td><td class="n">' + totP + '</td></tr></tfoot>' : '') + '</table></div></div></section>');
 
     // Cables
     var fabs = {};
     cat.fabricantesCable.forEach(function (f) { fabs[f.id] = f.nombre; });
-    h.push('<section class="card"><div class="card-h"><h2>Cables por tipo</h2><span class="sub">Longitud estimada = cantidad × distancia del tramo (sin colas ni subidas)</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+    h.push('<section class="card ancha"><div class="card-h"><h2>Cables por tipo</h2><span class="sub">Longitud estimada = cantidad × distancia del tramo (sin colas ni subidas)</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
       '<th>Material</th><th class="n"># cond.</th><th>Calibre</th><th>Cable (referencia)</th><th>Fabricante</th><th>Clase NEC</th><th class="n">Cantidad (corridas)</th><th class="n">Longitud estimada (m)</th><th class="n">Peso estimado (kg)</th></tr></thead><tbody>');
     if (!R.bomCables.length) h.push('<tr><td colspan="9" class="empty">Sin cables asignados.</td></tr>');
     R.bomCables.forEach(function (b) {
@@ -616,14 +678,14 @@
     h.push('</tbody></table></div></div></section>');
 
     // Detalle
-    h.push('<section class="card"><div class="card-h"><h2>Detalle de tramos por nivel</h2><span class="sub">Solo tramos en uso / only segments in use</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Nivel</th><th>#</th><th>Sección</th><th>Tipo</th><th class="n">Cables</th><th class="n">Área cables (mm²)</th><th>Canasta seleccionada</th><th>Referencia / P/N</th><th class="n">% llenado NEC</th><th class="n">% carga</th><th>Veredicto</th><th class="n">Dist. (m)</th></tr></thead><tbody>');
-    if (!R.detalle.length) h.push('<tr><td colspan="12" class="empty">Sin tramos en uso.</td></tr>');
+    h.push('<section class="card ancha"><div class="card-h"><h2>Detalle de tramos por nivel</h2><span class="sub">Solo tramos en uso / only segments in use</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Nivel</th><th>#</th><th>Sección</th><th>Canalización</th><th>Tipo</th><th class="n">Cables</th><th class="n">Área cables (mm²)</th><th>Tamaño seleccionado</th><th>Referencia / P/N</th><th class="n">% llenado NEC</th><th class="n">% carga</th><th class="n">% llenado real</th><th>Veredicto</th><th class="n">Dist. (m)</th></tr></thead><tbody>');
+    if (!R.detalle.length) h.push('<tr><td colspan="14" class="empty">Sin tramos en uso.</td></tr>');
     R.detalle.forEach(function (d) {
       var x = d.r;
-      h.push('<tr><td>' + esc(d.nivel.nombre) + '</td><td>' + d.num + '</td><td>' + esc(x.tramo.nombre || '(sin nombre)') + '</td><td class="muted">' + esc(x.tipoNombre) + '</td>' +
+      h.push('<tr><td>' + esc(d.nivel.nombre) + '</td><td>' + d.num + '</td><td>' + esc(x.tramo.nombre || '(sin nombre)') + '</td><td>' + esc(marcaDe(x.serie.marca).nombre + ' · ' + (Calc.SISTEMAS[x.sistema] || '')) + '</td><td class="muted">' + esc(x.tipoNombre) + '</td>' +
         '<td class="n">' + x.cables + '</td><td class="n">' + fmt(x.areaTotal, 1) + '</td><td>' + esc(x.seleccionada ? x.seleccionada.nombre : 'Sin selección') + '</td><td>' + esc(x.refSeleccionada) + '</td>' +
-        '<td class="n">' + pctCell(x.pctNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(x.pctCarga, null, 1) + '</td><td>' + chip(x.veredicto, x.estado) + '</td><td class="n">' + fmt(x.tramo.distancia, 1) + '</td></tr>');
+        '<td class="n">' + pctCell(x.pctNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(x.pctCarga, null, 1) + '</td><td class="n">' + pctReal(x.pctBruta, x.estadoBruta) + '</td><td>' + chip(x.veredicto, x.estado) + '</td><td class="n">' + fmt(x.tramo.distancia, 1) + '</td></tr>');
     });
     h.push('</tbody></table></div></div></section>');
     h.push('</div>');
@@ -633,18 +695,18 @@
   /* ================= Vista: Ayuda ================= */
   function vistaAyuda() {
     var items = [
-      ['A', 'PROYECTO — pestaña Proyecto: número, nombre, ubicación, reserva de diseño (% máx. del área NEC), marca y acabado de canasta, claro y tipo de canasta por defecto. Aplican a todo el edificio.'],
+      ['A', 'PROYECTO — pestaña Proyecto: número, nombre, ubicación, reserva de diseño (% máx. del área NEC), canalización por defecto (marca · tipo), acabado, marca de cable, claro, tipo de canasta, criterios del ducto cuadrado y del llenado real. Aplican a todo el edificio.'],
       ['B', 'NIVELES — en la pestaña Proyecto agregue los niveles del edificio (uno por uno o en serie). Cada nivel crea su propia pestaña. Puede renombrarlos, ordenarlos, duplicarlos o eliminarlos.'],
-      ['C', 'TRAMOS — tabla superior de cada nivel: nombre del tramo, tipo de canasta, claro, distancia y canasta seleccionada. Celdas VERDES = entrada manual. Deje tipo/claro en «(defecto)» para usar los del proyecto.'],
-      ['D', 'CABLES — lista inferior: tramo, cable (catálogo Viakon / Condumex) y cantidad. Un tramo suma todas las líneas asignadas. Use «＋ cable» en un tramo para agregar líneas ya asignadas, o el filtro «Mostrar» para ver un solo tramo.'],
-      ['E', 'CANASTA RECOMENDADA — la de menor sección del catálogo de la marca que cumple NEC 392.22(A) (con la reserva de diseño) y la carga máx. por claro. Con «usar» la copia a la seleccionada.'],
-      ['F', '% LLENADO NEC — Σ áreas de los cables < 4/0 ÷ área permitida (Col. 1/3, o Col. 2/4 − 30·Sd / 25·Sd si hay mezcla con cables ≥ 4/0). Solo cables ≥ 4/0: Σ diámetros ÷ ancho (una sola capa). Verde ≤ reserva, naranja > reserva, rojo > 100 %.'],
-      ['G', '% CARGA — peso real de los cables (lb/ft) ÷ carga máxima admisible de la canasta para el claro del tramo. Rojo si excede 100 %.'],
-      ['H', '% OCUPACIÓN BRUTA — área de todos los cables ÷ área interior efectiva (ancho × min(alto, 150 mm)). Solo referencia (factor del fabricante 0,5 / 0,6 / 0,7); naranja si lo supera.'],
-      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho o peso/claro) · ⚠ advertencia (supera la reserva o la ocupación bruta del fabricante) · ✔ CUMPLE.'],
-      ['J', 'MEMORIA DE CÁLCULO — consolida niveles, errores, longitudes, metros por tamaño de canasta y cables por tipo (lista de materiales), y el detalle de cada tramo en uso. Se imprime o guarda en PDF desde el navegador.'],
-      ['K', 'LIMITACIONES — no se verifica ampacidad (NEC 392.80(A)), soportes (392.30) ni curvas. Los cables de control/señal no entran en el chequeo de área NEC. Verifique la tabla NEC 392.22(A) contra la edición vigente.'],
-      ['L', 'CATÁLOGOS — marcas, canastas, cables, fabricantes, tipos de canasta y tabla NEC se administran en la pestaña Administración (solo con permisos de administrador).'],
+      ['C', 'TRAMOS — tabla superior de cada nivel: nombre del tramo, canalización (canasta, escalera o ducto cuadrado de Cablofil, Eaton o Schneider), tipo, claro, distancia y tamaño seleccionado. Celdas VERDES = entrada manual. Deje canalización/tipo/claro en «(defecto)» para usar los del proyecto.'],
+      ['D', 'CABLES — lista inferior: tramo y cable elegido por material, # de conductores, calibre e hilos (dentro de la marca de cable del proyecto), y cantidad. Un tramo suma todas las líneas asignadas.'],
+      ['E', 'TAMAÑO RECOMENDADO — el de menor sección de la línea del tramo que cumple el área NEC con la reserva de diseño, la carga máx. por claro y el llenado real ≤ criterio Sinergia (40 %). Con «usar» lo copia al seleccionado.'],
+      ['F', '% LLENADO NEC — canasta y escalera (NEC 392.22(A)): Σ áreas < 4/0 ÷ área permitida (Col. 1/3, o Col. 2/4 − 30·Sd / 25·Sd con mezcla); solo cables ≥ 4/0: Σ diámetros ÷ ancho. Ducto cuadrado (NEC 376.22): Σ áreas de todos los cables ÷ 20 % de la sección. Naranja > reserva, rojo > 100 %.'],
+      ['G', '% CARGA — peso real de los cables (lb/ft) ÷ carga máxima admisible para el claro del tramo. Rojo si excede 100 %. Carga 0 en el catálogo = claro no publicado por el fabricante (no permitido).'],
+      ['H', '% LLENADO REAL — área de todos los cables ÷ área interior útil (TIA-569 / BICSI). Verde < 30 % · amarillo 30–40 % · naranja > 40 % (criterio Sinergia de prellenado, ⚠) · rojo > 50 % (máximo TIA-569 / BICSI, ❌). Los límites se ajustan en la pestaña Proyecto.'],
+      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho, peso/claro o llenado real > 50 %) · ⚠ advertencia (supera la reserva, el criterio Sinergia o más de 30 conductores portadores en ducto) · ✔ CUMPLE.'],
+      ['J', 'MEMORIA DE CÁLCULO — consolida niveles, errores, longitudes, metros y piezas por tamaño (canasta, escalera y ducto), cables por tipo y el detalle de cada tramo. Se imprime con el formato Sinergia (membrete, carta) o se descarga en Excel.'],
+      ['K', 'LIMITACIONES — no se verifica ampacidad (NEC 392.80(A)), soportes (392.30 / 376.30) ni curvas. Los cables de control/señal no entran en el chequeo de área NEC 392.22. Verifique las tablas contra la edición vigente.'],
+      ['L', 'CATÁLOGOS — marcas, líneas de producto (claros y acabados), tamaños, cables, fabricantes, tipos de canasta y tabla NEC se administran en la pestaña Administración (solo con permisos de administrador).'],
       ['M', 'DATOS — en esta versión los proyectos se guardan en este navegador. Use «Proyecto ▾ → Exportar» para respaldar o compartir un proyecto (.json). En la siguiente fase se conectará a la base de datos Supabase.']
     ];
     var h = ['<div class="page-h"><div><h1>Ayuda</h1><div class="meta">Cómo usar la herramienta</div></div></div>'];
@@ -662,12 +724,12 @@
 
   /* ================= Vista: Administración ================= */
   function vistaAdmin() {
-    var subs = [['canastas', 'Canastas'], ['marcas', 'Marcas'], ['cables', 'Cables'], ['fabricantes', 'Fabricantes de cable'], ['tipos', 'Tipos de canasta'], ['nec', 'Tabla NEC'], ['respaldo', 'Respaldo y seguridad']];
+    var subs = [['canastas', 'Tamaños de canalización'], ['series', 'Líneas de producto'], ['marcas', 'Marcas'], ['cables', 'Cables'], ['fabricantes', 'Fabricantes de cable'], ['tipos', 'Tipos de canasta'], ['nec', 'Tabla NEC'], ['respaldo', 'Respaldo y seguridad']];
     var h = ['<div class="page-h"><div><h1>Administración de catálogos</h1><div class="meta">Marcas, tipos de canasta y tipos de cable disponibles para todos los proyectos. Catálogo actualizado: ' + esc(S.catalogo.actualizado || '') + '</div></div></div>'];
     h.push('<div class="admin-banner">Los cambios se guardan automáticamente y afectan los cálculos de todos los proyectos de este navegador. ' +
       'Antes de eliminar un elemento verifique que ningún proyecto lo use. Use «Respaldo» para exportar el catálogo y compartirlo.</div>');
     h.push('<div class="subtabs">' + subs.map(function (s) { return '<button class="subtab' + (S.adminSub === s[0] ? ' active' : '') + '" data-act="admin-sub" data-id="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>');
-    var f = { canastas: adminCanastas, marcas: adminMarcas, cables: adminCables, fabricantes: adminFabricantes, tipos: adminTipos, nec: adminNec, respaldo: adminRespaldo }[S.adminSub];
+    var f = { canastas: adminCanastas, series: adminSeries, marcas: adminMarcas, cables: adminCables, fabricantes: adminFabricantes, tipos: adminTipos, nec: adminNec, respaldo: adminRespaldo }[S.adminSub];
     h.push(f());
     return h.join('');
   }
@@ -680,42 +742,59 @@
   function aDel(col, id) { return '<button class="btn-icon del" tabindex="-1" data-act="admin-del" data-col="' + col + '" data-id="' + id + '" title="Eliminar">✕</button>'; }
 
   function adminCanastas() {
-    var cat = S.catalogo, fm = S.adminFiltro.marca || (cat.marcas[0] || {}).id;
-    var marca = cat.marcas.filter(function (m) { return m.id === fm; })[0] || { claros: [] };
-    var lista = cat.canastas.filter(function (c) { return c.marca === fm; }).sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
+    var cat = S.catalogo, fm = S.adminFiltro.serie || (cat.series[0] || {}).id;
+    var serie = serieDe(fm) || VACIA, ducto = serie.sistema === 'ducto';
+    var lista = cat.canastas.filter(function (c) { return c.serie === fm; }).sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
     var necIdx = {};
     cat.nec.forEach(function (r) { necIdx[r.anchoMm] = r; });
-    var h = ['<div class="card"><div class="card-h"><h2>Canastas (tipos y tamaños)</h2><span class="sub">El «orden» define cuál es la recomendada: se elige la primera que cumple. Ordene de menor a mayor sección.</span><span class="grow"></span>' +
-      '<div class="toolbar"><label style="font-size:12px;color:var(--ink-3)">Marca</label><select class="in" data-act-change="admin-filtro-marca">' + cat.marcas.map(function (m) { return opt(m.id, m.nombre, m.id === fm); }).join('') + '</select>' +
-      '<button class="btn btn-sm" data-act="admin-ordenar">Ordenar por sección</button><button class="btn btn-primary btn-sm" data-act="admin-add" data-col="canastas">＋ Agregar canasta</button></div></div>'];
-    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th class="n">Orden</th><th>Nombre</th><th class="n">Ancho nom. (mm)</th><th class="n">Alto nom. (mm)</th><th class="n">Ancho real (mm)</th><th class="n">Alto real (mm)</th><th class="n">Factor llenado fab.</th>' +
-      (marca.claros || []).map(function (c) { return '<th class="n">Carga máx. @ ' + fmt(c, 2) + ' ft (lb/ft)</th>'; }).join('') +
-      '<th>Serie</th><th>Código base</th><th class="n">NEC Col.1 / Col.3</th><th></th></tr></thead><tbody>');
-    if (!lista.length) h.push('<tr><td colspan="20" class="empty">Esta marca no tiene canastas. Agregue la primera.</td></tr>');
+    var h = ['<div class="card"><div class="card-h"><h2>Tamaños de canalización</h2><span class="sub">El «orden» define cuál es el recomendado: se elige el primero que cumple. Ordene de menor a mayor sección.</span><span class="grow"></span>' +
+      '<div class="toolbar"><label style="font-size:12px;color:var(--ink-3)">Línea</label><select class="in" data-act-change="admin-filtro-serie">' + opcionesSeries(fm) + '</select>' +
+      '<button class="btn btn-sm" data-act="admin-ordenar">Ordenar por sección</button><button class="btn btn-primary btn-sm" data-act="admin-add" data-col="canastas">＋ Agregar tamaño</button></div></div>'];
+    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th class="n">Orden</th><th>Nombre</th><th class="n">Ancho nom. (mm)</th><th class="n">Alto nom. (mm)</th><th class="n">Ancho real (mm)</th><th class="n">Alto / profundidad útil (mm)</th>' +
+      (serie.claros || []).map(function (c) { return '<th class="n">Carga máx. @ ' + fmt(c, 2) + ' ft (lb/ft)</th>'; }).join('') +
+      '<th>Familia</th><th>Código base</th><th class="n">' + (ducto ? 'Sección (mm²)' : 'NEC Col.1 / Col.3') + '</th><th></th></tr></thead><tbody>');
+    if (!lista.length) h.push('<tr><td colspan="20" class="empty">Esta línea no tiene tamaños. Agregue el primero.</td></tr>');
     lista.forEach(function (c) {
       var n = necIdx[c.anchoNom];
+      var ref = ducto ? '<td class="n muted">' + fmt(Number(c.anchoReal) * Number(c.altoReal), 0) + '</td>'
+        : '<td class="n ' + (n ? 'muted' : 't-err') + '">' + (n ? fmt(n.col1, 0) + ' / ' + fmt(n.col3, 0) : 'sin fila NEC') + '</td>';
       h.push('<tr><td>' + aIn('canastas', c.id, 'orden', c.orden, 'num', 'w-xs') + '</td><td>' + aIn('canastas', c.id, 'nombre', c.nombre, '', 'w-m') + '</td>' +
         '<td>' + aIn('canastas', c.id, 'anchoNom', c.anchoNom, 'num', 'w-xs') + '</td><td>' + aIn('canastas', c.id, 'altoNom', c.altoNom, 'num', 'w-xs') + '</td>' +
         '<td>' + aIn('canastas', c.id, 'anchoReal', c.anchoReal, 'num', 'w-xs') + '</td><td>' + aIn('canastas', c.id, 'altoReal', c.altoReal, 'num', 'w-xs') + '</td>' +
-        '<td>' + aIn('canastas', c.id, 'factor', c.factor, 'num', 'w-xs') + '</td>' +
-        (marca.claros || []).map(function (_, i) { return '<td>' + aIn('canastas', c.id, 'cargas.' + i, (c.cargas || [])[i], 'num', 'w-xs') + '</td>'; }).join('') +
-        '<td>' + aIn('canastas', c.id, 'serie', c.serie, '', 'w-s') + '</td><td>' + aIn('canastas', c.id, 'codigo', c.codigo, '', 'w-s') + '</td>' +
-        '<td class="n ' + (n ? 'muted' : 't-err') + '">' + (n ? fmt(n.col1, 0) + ' / ' + fmt(n.col3, 0) : 'sin fila NEC') + '</td><td>' + aDel('canastas', c.id) + '</td></tr>');
+        (serie.claros || []).map(function (_, k) { return '<td>' + aIn('canastas', c.id, 'cargas.' + k, (c.cargas || [])[k], 'num', 'w-xs') + '</td>'; }).join('') +
+        '<td>' + aIn('canastas', c.id, 'familia', c.familia, '', 'w-s') + '</td><td>' + aIn('canastas', c.id, 'codigo', c.codigo, '', 'w-m') + '</td>' +
+        ref + '<td>' + aDel('canastas', c.id) + '</td></tr>');
     });
-    h.push('</tbody></table></div><div class="legend">Referencia del fabricante = código base + acabado del proyecto. El ancho nominal debe existir en la Tabla NEC. Las cargas corresponden a los claros definidos en la marca.</div></div></div>');
+    h.push('</tbody></table></div><div class="legend">Referencia del fabricante = código base + acabado. ' +
+      (ducto ? 'Ducto cuadrado: NEC 376.22 usa la sección interior (ancho real × alto real); no requiere fila en la Tabla NEC. Deje las cargas en blanco si el fabricante no publica carga por claro.'
+        : 'El ancho nominal debe existir en la Tabla NEC 392.22. Las cargas corresponden a los claros definidos en la línea de producto.') + '</div></div></div>');
+    return h.join('');
+  }
+  function adminSeries() {
+    var cat = S.catalogo;
+    var marcas = cat.marcas.map(function (m) { return [m.id, m.nombre]; });
+    var sistemas = Object.keys(Calc.SISTEMAS).map(function (k) { return [k, Calc.SISTEMAS[k]]; });
+    var h = ['<div class="card"><div class="card-h"><h2>Líneas de producto</h2><span class="sub">Marca + tipo de canalización: cada línea tiene sus claros, acabados y tamaños.</span><span class="grow"></span><button class="btn btn-primary btn-sm" data-act="admin-add" data-col="series">＋ Agregar línea</button></div>'];
+    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Marca</th><th>Tipo</th><th>Nombre de la línea</th><th>Acabados (coma)</th><th>Claros de carga (ft, coma)</th><th class="n">Largo de pieza (m)</th><th>Nota / fuente</th><th class="n">Tamaños</th><th></th></tr></thead><tbody>');
+    cat.series.forEach(function (s) {
+      var n = cat.canastas.filter(function (c) { return c.serie === s.id; }).length;
+      h.push('<tr><td>' + aSel('series', s.id, 'marca', s.marca, marcas, 'w-m') + '</td><td>' + aSel('series', s.id, 'sistema', s.sistema, sistemas, 'w-s') + '</td>' +
+        '<td>' + aIn('series', s.id, 'nombre', s.nombre, '', 'w-l') + '</td><td>' + aIn('series', s.id, 'acabados', s.acabados, 'lista', 'w-s') + '</td>' +
+        '<td>' + aIn('series', s.id, 'claros', s.claros, 'listanum', 'w-m') + '</td><td>' + aIn('series', s.id, 'largoPieza', s.largoPieza || 3, 'num', 'w-xs') + '</td>' +
+        '<td>' + aIn('series', s.id, 'nota', s.nota, '', 'w-xl') + '</td><td class="n">' + n + '</td><td>' + aDel('series', s.id) + '</td></tr>');
+    });
+    h.push('</tbody></table></div><div class="legend">Canasta y escalera se calculan con NEC 392.22(A); el ducto cuadrado con NEC 376.22. Si cambia la cantidad de claros, revise las cargas de cada tamaño (una columna por claro, en el mismo orden).</div></div></div>');
     return h.join('');
   }
   function adminMarcas() {
     var cat = S.catalogo;
-    var h = ['<div class="card"><div class="card-h"><h2>Marcas de canasta</h2><span class="grow"></span><button class="btn btn-primary btn-sm" data-act="admin-add" data-col="marcas">＋ Agregar marca</button></div>'];
-    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Acabados (separados por coma)</th><th>Claros de la tabla de carga (ft, separados por coma)</th><th class="n">Largo de pieza (m)</th><th>Nota</th><th class="n">Canastas</th><th></th></tr></thead><tbody>');
+    var h = ['<div class="card"><div class="card-h"><h2>Marcas de canalización</h2><span class="grow"></span><button class="btn btn-primary btn-sm" data-act="admin-add" data-col="marcas">＋ Agregar marca</button></div>'];
+    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Líneas de producto</th><th></th></tr></thead><tbody>');
     cat.marcas.forEach(function (m) {
-      var n = cat.canastas.filter(function (c) { return c.marca === m.id; }).length;
-      h.push('<tr><td>' + aIn('marcas', m.id, 'nombre', m.nombre, '', 'w-m') + '</td><td>' + aIn('marcas', m.id, 'acabados', m.acabados, 'lista', 'w-m') + '</td>' +
-        '<td>' + aIn('marcas', m.id, 'claros', m.claros, 'listanum', 'w-m') + '</td><td>' + aIn('marcas', m.id, 'largoPieza', m.largoPieza || 3, 'num', 'w-xs') + '</td>' +
-        '<td>' + aIn('marcas', m.id, 'nota', m.nota, '', 'w-xl') + '</td><td class="n">' + n + '</td><td>' + aDel('marcas', m.id) + '</td></tr>');
+      var lineas = cat.series.filter(function (s) { return s.marca === m.id; }).map(function (s) { return Calc.SISTEMAS[s.sistema] || s.sistema; });
+      h.push('<tr><td>' + aIn('marcas', m.id, 'nombre', m.nombre, '', 'w-l') + '</td><td class="muted">' + esc(lineas.join(' · ') || '—') + '</td><td>' + aDel('marcas', m.id) + '</td></tr>');
     });
-    h.push('</tbody></table></div><div class="legend">Si cambia la cantidad de claros, revise las cargas de cada canasta de la marca (una columna por claro, en el mismo orden).</div></div></div>');
+    h.push('</tbody></table></div></div></div>');
     return h.join('');
   }
   function adminCables() {
@@ -798,6 +877,7 @@
     var t = el.getAttribute('data-type');
     var v = el.value;
     if (t === 'num') return parseNum(v);
+    if (t === 'pct') { var n = parseNum(v); return n === '' ? '' : n / 100; }
     if (t === 'lista') return v.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
     if (t === 'listanum') return v.split(/[;,\s]+/).map(parseNum).filter(function (n) { return n !== ''; });
     return v;
@@ -810,8 +890,8 @@
       if (a.indexOf('par.') === 0) {
         var k = a.slice(4);
         S.proyecto.parametros[k] = val;
-        if (k === 'marca') {
-          var m = marcaActual();
+        if (k === 'serie') {
+          var m = serieActual();
           if ((m.acabados || []).indexOf(S.proyecto.parametros.acabado) < 0) S.proyecto.parametros.acabado = (m.acabados || [])[0] || '';
           if ((m.claros || []).indexOf(Number(S.proyecto.parametros.claro)) < 0) S.proyecto.parametros.claro = (m.claros || [])[0] || '';
         }
@@ -828,6 +908,13 @@
       var q = a.split('|'), nv = nivelPorId(q[0]);
       var tr = nv.tramos.filter(function (t) { return t.id === q[1]; })[0];
       tr[q[2]] = valorDe(el);
+      if (q[2] === 'serie') {
+        // Al cambiar de línea, el tamaño y el claro deben pertenecer a la nueva línea
+        var sNueva = Calc.serieEfectiva(R.cx, tr, S.proyecto.parametros);
+        var cNueva = R.cx.canastas[tr.canasta];
+        if (cNueva && cNueva.serie !== sNueva.id) tr.canasta = '';
+        if (tr.claro !== '' && (sNueva.claros || []).map(Number).indexOf(Number(tr.claro)) < 0) tr.claro = '';
+      }
       guardar(); return renderPronto();
     }
     if ((a = el.getAttribute('data-l'))) {
@@ -853,7 +940,7 @@
       else if (a !== 'admin-texto') S.filtroTramo[a] = el.value;
       return renderPronto();
     }
-    if (el.getAttribute('data-act-change') === 'admin-filtro-marca') { S.adminFiltro.marca = el.value; return renderPronto(); }
+    if (el.getAttribute('data-act-change') === 'admin-filtro-serie') { S.adminFiltro.serie = el.value; return renderPronto(); }
   });
 
   vista.addEventListener('input', function (e) {
@@ -976,11 +1063,11 @@
       case 'admin-add': return adminAgregar(el.getAttribute('data-col'));
       case 'admin-del': return adminEliminar(el.getAttribute('data-col'), id);
       case 'admin-ordenar': {
-        var fm = S.adminFiltro.marca || (S.catalogo.marcas[0] || {}).id;
-        S.catalogo.canastas.filter(function (c) { return c.marca === fm; })
+        var fm = S.adminFiltro.serie || (S.catalogo.series[0] || {}).id;
+        S.catalogo.canastas.filter(function (c) { return c.serie === fm; })
           .sort(function (a, b) { return (a.altoNom * a.anchoNom) - (b.altoNom * b.anchoNom) || a.anchoNom - b.anchoNom; })
           .forEach(function (c, k) { c.orden = k + 1; });
-        guardarCatalogo(); render(); toast('Canastas ordenadas por sección (alto × ancho)');
+        guardarCatalogo(); render(); toast('Tamaños ordenados por sección (alto × ancho)');
         break;
       }
       case 'cat-exportar':
@@ -1001,14 +1088,16 @@
   function adminAgregar(col) {
     var cat = S.catalogo;
     if (col === 'canastas') {
-      var fm = S.adminFiltro.marca || (cat.marcas[0] || {}).id;
-      if (!fm) return toast('Primero cree una marca');
-      var max = Math.max.apply(null, [0].concat(cat.canastas.filter(function (c) { return c.marca === fm; }).map(function (c) { return c.orden || 0; })));
-      var m = cat.marcas.filter(function (x) { return x.id === fm; })[0];
-      cat.canastas.push({ id: uid('ct'), marca: fm, nombre: 'Nueva canasta', anchoNom: '', altoNom: '', anchoReal: '', altoReal: '', factor: 0.5, cargas: (m.claros || []).map(function () { return ''; }), serie: '', codigo: '', orden: max + 1 });
+      var fm = S.adminFiltro.serie || (cat.series[0] || {}).id;
+      if (!fm) return toast('Primero cree una línea de producto');
+      var max = Math.max.apply(null, [0].concat(cat.canastas.filter(function (c) { return c.serie === fm; }).map(function (c) { return c.orden || 0; })));
+      var m = serieDe(fm);
+      cat.canastas.push({ id: uid('ct'), marca: m.marca, serie: fm, nombre: 'Nuevo tamaño', anchoNom: '', altoNom: '', anchoReal: '', altoReal: '', factor: '', cargas: (m.claros || []).map(function () { return ''; }), familia: '', codigo: '', orden: max + 1 });
     } else if (col === 'marcas') {
-      var mm = { id: uid('m'), nombre: 'Nueva marca', acabados: [''], claros: [], largoPieza: 3, nota: '' };
-      cat.marcas.push(mm);
+      cat.marcas.push({ id: uid('m'), nombre: 'Nueva marca' });
+    } else if (col === 'series') {
+      if (!cat.marcas.length) return toast('Primero cree una marca');
+      cat.series.push({ id: uid('s'), marca: cat.marcas[0].id, sistema: 'canasta', nombre: '', acabados: [''], claros: [], largoPieza: 3, nota: '' });
     } else if (col === 'cables') {
       cat.cables.unshift({ id: uid('cb'), nombre: 'Nuevo cable', fabricante: S.adminFiltro.fab || (cat.fabricantesCable[0] || {}).id || '', material: 'Cu', conductores: 3, calibre: '', hilos: '', aislamiento: '', articulo: '', peso: '', diam: '', clase: S.adminFiltro.clase || 'MC < 4/0' });
       S.adminFiltro.texto = '';
@@ -1026,13 +1115,17 @@
       if (col === 'tiposCanasta') nv.tramos.forEach(function (t) { if (t.tipo === id) n++; });
     });
     if (col === 'tiposCanasta' && P.parametros.tipo === id) n++;
-    if (col === 'marcas' && P.parametros.marca === id) n++;
+    if (col === 'series') {
+      if (P.parametros.serie === id) n++;
+      P.niveles.forEach(function (nv) { nv.tramos.forEach(function (t) { if (t.serie === id) n++; }); });
+    }
     return n;
   }
 
   function adminEliminar(col, id) {
     var cat = S.catalogo;
-    if (col === 'marcas' && cat.canastas.some(function (c) { return c.marca === id; })) return toast('La marca tiene canastas: elimínelas primero');
+    if (col === 'marcas' && cat.series.some(function (c) { return c.marca === id; })) return toast('La marca tiene líneas de producto: elimínelas primero');
+    if (col === 'series' && cat.canastas.some(function (c) { return c.serie === id; })) return toast('La línea tiene tamaños: elimínelos primero');
     if (col === 'fabricantesCable' && cat.cables.some(function (c) { return c.fabricante === id; })) return toast('El fabricante tiene cables: elimínelos o reasígnelos primero');
     if (col === 'tiposCanasta' && cat.tiposCanasta.length <= 1) return toast('Debe existir al menos un tipo de canasta');
     var uso = col === 'nec' ? 0 : enUso(col, id);
@@ -1047,19 +1140,19 @@
 
   /* ================= Exportaciones ================= */
   function exportarDetalle() {
-    var filas = [['Nivel', '#', 'Sección', 'Tipo', 'Claro (ft)', 'Cables', 'Área cables < 4/0 (mm²)', 'Sd (mm)', 'Caso NEC', 'Canasta recomendada', 'Canasta seleccionada', 'Referencia', 'Área permitida (mm²)', '% llenado NEC', 'Carga (lb/ft)', 'Carga máx. (lb/ft)', '% carga', '% ocupación bruta', 'Veredicto', 'Distancia (m)']];
+    var filas = [['Nivel', '#', 'Sección', 'Tipo', 'Claro (ft)', 'Cables', 'Área cables < 4/0 (mm²)', 'Sd (mm)', 'Caso NEC', 'Canalización', 'Tamaño recomendado', 'Tamaño seleccionado', 'Referencia', 'Área permitida (mm²)', '% llenado NEC', 'Carga (lb/ft)', 'Carga máx. (lb/ft)', '% carga', '% llenado real', 'Veredicto', 'Distancia (m)']];
     R.niveles.forEach(function (nv) {
       nv.tramos.forEach(function (t, i) {
         if (!t.cables && !t.tramo.nombre) return;
-        filas.push([nv.nivel.nombre, i + 1, t.tramo.nombre, t.tipoNombre, t.claro, t.cables, fmt(t.areaMenor, 1), fmt(t.sd, 2), t.casoTexto, t.recomendadaTexto,
+        filas.push([nv.nivel.nombre, i + 1, t.tramo.nombre, t.tipoNombre, t.claro, t.cables, fmt(t.areaMenor, 1), fmt(t.sd, 2), t.casoTexto, nombreSerie(t.serie), t.recomendadaTexto,
           t.seleccionada ? t.seleccionada.nombre : '', t.refSeleccionada, t.areaPermitida === 'n/a' ? 'n/a' : fmt(t.areaPermitida, 1), fmtPct(t.pctNec), fmt(t.peso, 2), fmt(t.cargaMax, 2), fmtPct(t.pctCarga), fmtPct(t.pctBruta), t.veredicto, t.tramo.distancia]);
       });
     });
     descargar('detalle_tramos_' + slug(S.proyecto.numero + '_' + S.proyecto.nombre) + '.csv', csv(filas), 'text/csv;charset=utf-8');
   }
   function exportarMateriales() {
-    var filas = [['CANASTAS'], ['Marca', 'Canasta', 'Número de parte', 'Tramos', 'Longitud (m)']];
-    R.bomCanastas.forEach(function (b) { filas.push([b.marca ? b.marca.nombre : '', b.canasta.nombre, b.referencia, b.tramos, fmt(b.longitud, 1)]); });
+    var filas = [['CANALIZACIONES'], ['Marca', 'Tipo', 'Tamaño', 'Número de parte', 'Tramos', 'Longitud (m)']];
+    R.bomCanastas.forEach(function (b) { filas.push([b.marca ? b.marca.nombre : '', Calc.SISTEMAS[b.serie.sistema] || '', b.canasta.nombre, b.referencia, b.tramos, fmt(b.longitud, 1)]); });
     filas.push([], ['CABLES'], ['Cable', 'Clase', 'Cantidad', 'Longitud estimada (m)', 'Peso estimado (kg)']);
     R.bomCables.forEach(function (b) { filas.push([b.cable.nombre, b.cable.clase, b.cantidad, fmt(b.longitud, 1), fmt(b.peso * 0.45359237, 1)]); });
     descargar('materiales_' + slug(S.proyecto.numero + '_' + S.proyecto.nombre) + '.csv', csv(filas), 'text/csv;charset=utf-8');
@@ -1094,7 +1187,7 @@
   });
 
   function abrirProyecto(p, guardarlo) {
-    if (p.parametros && p.parametros.fabricanteCable === undefined) p.parametros.fabricanteCable = marcaCablePorUso(p);
+    migrarProyecto(p);
     S.proyecto = p;
     S.filtroTramo = {};
     if (S.vista.indexOf('nivel:') === 0) S.vista = 'proyecto';
@@ -1171,7 +1264,26 @@
 
   /* ================= Inicio ================= */
   function migrarCatalogo(cat) {
-    cat.marcas.forEach(function (m) { if (!m.largoPieza) m.largoPieza = 3; });
+    // Catálogos anteriores a las líneas de producto: cada marca pasa a ser su línea de «canasta»
+    if (!cat.series) {
+      cat.series = cat.marcas.map(function (m) {
+        return { id: m.id + '-canasta', marca: m.id, sistema: 'canasta', nombre: '', acabados: m.acabados || [], claros: m.claros || [], largoPieza: m.largoPieza || 3, nota: m.nota || '' };
+      });
+      cat.canastas.forEach(function (c) {
+        if (c.serie && !c.familia) c.familia = c.serie; // el antiguo campo «serie» era la familia del fabricante (CF30, CF54…)
+        c.serie = c.marca + '-canasta';
+      });
+    }
+    // Agrega lo nuevo del catálogo base (marcas, líneas y tamaños) sin tocar lo editado por el administrador
+    var base = window.CATALOGO_BASE;
+    if ((cat.version || 1) < (base.version || 1)) {
+      ['marcas', 'series', 'canastas'].forEach(function (col) {
+        var ids = {};
+        cat[col].forEach(function (x) { ids[x.id] = 1; });
+        base[col].forEach(function (x) { if (!ids[x.id]) cat[col].push(JSON.parse(JSON.stringify(x))); });
+      });
+      cat.version = base.version;
+    }
     // Catálogos guardados antes de separar material / conductores / calibre: se deducen del nombre
     cat.cables.forEach(function (c) {
       if (c.material && c.calibre && c.conductores) return;
@@ -1199,6 +1311,10 @@
       });
     })).then(function () { return Store.listarProyectos(); });
   }
+
+  // Enlace directo a una vista: index.html#memoria, #ayuda o #proyecto
+  var vistaInicial = location.hash.slice(1);
+  if (['memoria', 'ayuda', 'proyecto'].indexOf(vistaInicial) >= 0) S.vista = vistaInicial;
 
   Store.getCatalogo().then(function (cat) {
     S.catalogo = migrarCatalogo(cat);

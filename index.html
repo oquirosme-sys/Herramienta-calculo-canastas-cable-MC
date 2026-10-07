@@ -5,43 +5,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Canastas MC — Memoria de cálculo</title>
   <meta name="description" content="Memoria de cálculo de canastas portacables para cable MC según NEC 2020 Art. 392.22(A).">
-  <link rel="stylesheet" href="css/styles.css?v=7">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="css/styles.css?v=15">
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark">S</div>
-      <div>
-        <div class="brand-sub">Sinergia Ingeniería</div>
-        <div class="brand-title">Canastas portacables · Cable MC</div>
-      </div>
-    </div>
+<body data-app="canastas">
+  <!-- Membrete de impresión (Formato Sinergia): solo visible al imprimir la memoria -->
+  <div class="membrete-impresion" aria-hidden="true">
+    <img src="img/sinergia-logo.jpg" alt="">
+    <div>Sinergia Consultoría Mecánica y Eléctrica S.A<br>Oficentro Plaza Roble, Edificio Pórtico, Escazú</div>
+  </div>
 
-    <div class="project-bar">
-      <label class="sr-only" for="selProyecto">Proyecto</label>
-      <select id="selProyecto" title="Proyecto activo"></select>
-      <div class="menu">
-        <button class="btn btn-ghost" id="btnMenuProyecto" aria-haspopup="true">Proyecto ▾</button>
-        <div class="menu-list" id="menuProyecto" hidden>
-          <button data-accion="nuevo">Nuevo proyecto</button>
-          <button data-accion="duplicar">Duplicar proyecto</button>
-          <button data-accion="ejemplo">Cargar proyecto de ejemplo</button>
-          <button data-accion="xlsx">Descargar Excel (.xlsx)</button>
-          <button data-accion="exportar">Exportar proyecto (.json)</button>
-          <button data-accion="importar">Importar proyecto (.json)</button>
-          <hr>
-          <button data-accion="eliminar" class="danger">Eliminar proyecto</button>
+  <header class="barra">
+    <div class="barra-in">
+      <a class="volver" href="https://oquirosme-sys.github.io/" title="Volver al portal Sinergia Suite">← Suite</a>
+      <div class="app-id">
+        <span class="tesela" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7.5h18M3 16.5h18"/><path d="M6 7.5v9M10 7.5v9M14 7.5v9M18 7.5v9"/>
+          </svg>
+        </span>
+        <div>
+          <div class="app-marca">Sinergia Ingeniería</div>
+          <div class="app-nombre">Canastas MC</div>
         </div>
       </div>
-      <span class="save-state" id="estadoGuardado" title="Los datos se guardan en este navegador">●  Guardado</span>
+
+      <div class="barra-proyecto">
+        <label class="sr-only" for="selProyecto">Proyecto</label>
+        <select id="selProyecto" title="Proyecto activo"></select>
+        <div class="menu">
+          <button class="btn btn-ghost" id="btnMenuProyecto" aria-haspopup="true">Proyecto ▾</button>
+          <div class="menu-list" id="menuProyecto" hidden>
+            <button data-accion="nuevo">Nuevo proyecto</button>
+            <button data-accion="duplicar">Duplicar proyecto</button>
+            <button data-accion="ejemplo">Cargar proyecto de ejemplo</button>
+            <button data-accion="xlsx">Descargar Excel (.xlsx)</button>
+            <button data-accion="exportar">Exportar proyecto (.json)</button>
+            <button data-accion="importar">Importar proyecto (.json)</button>
+            <hr>
+            <button data-accion="eliminar" class="danger">Eliminar proyecto</button>
+          </div>
+        </div>
+        <span class="save-state" id="estadoGuardado" title="Los datos se guardan en este navegador">●  Guardado</span>
+      </div>
+
+      <button class="btn btn-admin" id="btnAdmin" title="Modo administrador">
+        <span class="lock" aria-hidden="true">🔒</span> <span id="lblAdmin">Administrador</span>
+      </button>
     </div>
-
-    <button class="btn btn-admin" id="btnAdmin" title="Modo administrador">
-      <span class="lock" aria-hidden="true">🔒</span> <span id="lblAdmin">Administrador</span>
-    </button>
+    <nav class="secciones" id="tabs" role="tablist"></nav>
   </header>
-
-  <nav class="tabs" id="tabs" role="tablist"></nav>
 
   <main id="vista" class="vista"></main>
 
@@ -65,11 +79,11 @@
   <input type="file" id="fileInput" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/catalogo-base.js?v=7"></script>
-  <script src="js/calc.js?v=7"></script>
-  <script src="js/store.js?v=7"></script>
-  <script src="js/auth.js?v=7"></script>
-  <script src="js/excel-export.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/catalogo-base.js?v=15"></script>
+  <script src="js/calc.js?v=15"></script>
+  <script src="js/store.js?v=15"></script>
+  <script src="js/auth.js?v=15"></script>
+  <script src="js/excel-export.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

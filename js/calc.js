@@ -1,5 +1,7 @@
-/* Motor de cálculo — réplica de las fórmulas de las pestañas de nivel (N01) de Canasta_MC_V2_1.xlsx.
- * NEC 2020 Art. 392.22(A): área permitida / suma de diámetros, carga por claro y ocupación bruta.
+/* Motor de cálculo — basado en las fórmulas de las pestañas de nivel (N01) de Canasta_MC_V2_1.xlsx.
+ * Canasta y escalera: NEC 2020 Art. 392.22(A) (área permitida / suma de diámetros) y carga por claro.
+ * Ducto cuadrado (wireway): NEC 2020 Art. 376.22 (≤ 20 % de la sección; > 30 conductores portadores → ajuste).
+ * Llenado real (área de cables ÷ área interior útil): TIA-569 / BICSI (máx. 50 %) y criterio Sinergia (40 %).
  * Funciones puras: no tocan el DOM ni el almacenamiento. */
 (function (global) {
   'use strict';
@@ -8,7 +10,11 @@
   var CLASE_MAYOR = 'MC >= 4/0';
   var CLASE_CONTROL = 'CONTROL/SEÑAL';
 
-  var CASOS = ['solo control/señal', '(A)(1) · todos < 4/0', '(A)(1)(a) · todos ≥ 4/0', '(A)(1)(b) · mezcla'];
+  var CASOS = ['solo control/señal', '(A)(1) · todos < 4/0', '(A)(1)(a) · todos ≥ 4/0', '(A)(1)(b) · mezcla', '376.22 · ≤ 20 % de la sección'];
+  var SISTEMAS = { canasta: 'Canasta', escalera: 'Escalera', ducto: 'Ducto cuadrado' };
+
+  /* Valores por defecto de los criterios de llenado real */
+  var LLENADO = { alerta: 0.30, sinergia: 0.40, maximo: 0.50 };
 
   function indexar(lista) {
     var m = {};
@@ -21,6 +27,7 @@
     var n = Number(v);
     return isFinite(n) ? n : null;
   }
+  function par(p, k, def) { var v = num(p[k]); return v === null ? def : v; }
 
   function prepararCatalogo(cat) {
     var nec = {};
@@ -30,37 +37,62 @@
       cables: indexar(cat.cables),
       canastas: indexar(cat.canastas),
       marcas: indexar(cat.marcas),
+      series: indexar(cat.series),
       tipos: indexar(cat.tiposCanasta),
       nec: nec
     };
   }
 
-  function canastasDeMarca(cx, marcaId) {
+  /* Tamaños de una línea de producto (serie), en orden de recomendación */
+  function canastasDeSerie(cx, serieId) {
     return (cx.raw.canastas || [])
-      .filter(function (c) { return !marcaId || c.marca === marcaId; })
+      .filter(function (c) { return !serieId || c.serie === serieId; })
       .slice()
       .sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
   }
 
-  /* Columnas NEC de la canasta: Col.1 / Col.3 (y Col.2 / Col.4 base = mismas, luego − k·Sd) */
+  /* Línea de producto efectiva de un tramo y sus valores derivados */
+  function serieEfectiva(cx, tramo, p) {
+    return cx.series[tramo.serie] || cx.series[p.serie] || (cx.raw.series || [])[0] || { id: '', sistema: 'canasta', claros: [], acabados: [] };
+  }
+  function claroEfectivo(serie, tramo, p) {
+    var cl = (serie.claros || []).map(Number);
+    if (num(tramo.claro) !== null) return num(tramo.claro);
+    if (num(p.claro) !== null && cl.indexOf(num(p.claro)) >= 0) return num(p.claro);
+    return cl.length ? cl[0] : num(p.claro);
+  }
+  function acabadoDe(serie, p) {
+    var ac = serie.acabados || [];
+    return ac.indexOf(p.acabado) >= 0 ? p.acabado : (ac[0] || '');
+  }
+  function referencia(cx, canasta, p) {
+    var s = cx.series[canasta.serie] || {};
+    return (canasta.codigo || '') + acabadoDe(s, p);
+  }
+
+  /* Columnas NEC 392.22 de la canasta/escalera: Col.1 / Col.3 (Col.2 / Col.4 base = mismas, luego − k·Sd) */
   function areaBaseNec(cx, canasta, ventilada) {
     var fila = cx.nec[Number(canasta.anchoNom)];
     if (!fila) return null;
-    var v = num(ventilada ? fila.col1 : fila.col3);
-    return v;
+    return num(ventilada ? fila.col1 : fila.col3);
+  }
+  function areaInterior(c) {
+    var a = num(c.anchoReal), h = num(c.altoReal);
+    return a !== null && h !== null ? a * h : null;
   }
 
   /* Área permitida NEC para un caso dado (columna N del Excel) */
-  function areaPermitida(cx, canasta, caso, ventilada, factorSd, sd) {
+  function areaPermitida(cx, canasta, caso, ventilada, factorSd, sd, factorDucto) {
+    if (caso === 4) { var ai = areaInterior(canasta); return ai === null ? null : factorDucto * ai; }
     if (caso === 2) return 'n/a';
     var base = areaBaseNec(cx, canasta, ventilada);
     if (base === null) return null;
     return caso === 1 ? base : base - factorSd * sd;
   }
 
-  function indiceClaro(marca, claro) {
-    if (!marca || claro === null) return -1;
-    var cl = marca.claros || [];
+  function indiceClaro(serie, claro) {
+    if (!serie || claro === null) return -1;
+    var cl = serie.claros || [];
     for (var i = 0; i < cl.length; i++) if (Math.abs(Number(cl[i]) - claro) < 1e-6) return i;
     return -1;
   }
@@ -68,6 +100,22 @@
   function cargaMax(canasta, idxClaro) {
     if (!canasta || idxClaro < 0) return null;
     return num((canasta.cargas || [])[idxClaro]);
+  }
+
+  /* Área útil para el llenado real: ancho real × min(alto real, altura máx. de cómputo); el ducto usa su sección completa */
+  function areaUtil(c, sistema, altoMax) {
+    var a = num(c.anchoReal), h = num(c.altoReal);
+    if (a === null || h === null) return null;
+    return a * (sistema === 'ducto' ? h : Math.min(h, altoMax));
+  }
+
+  /* Estado del llenado real: ok < alerta ≤ «alerta» < sinergia ≤ «warn» < máximo < «error» */
+  function estadoLlenado(v, p) {
+    if (v === null || v === undefined) return '';
+    if (v > par(p, 'llenadoMax', LLENADO.maximo)) return 'error';
+    if (v > par(p, 'llenadoSinergia', LLENADO.sinergia)) return 'warn';
+    if (v >= par(p, 'llenadoAlerta', LLENADO.alerta)) return 'alerta';
+    return 'ok';
   }
 
   /* Validación de una línea de cable (columna Q del Excel) */
@@ -109,7 +157,7 @@
     var p = proyecto.parametros;
     var r = {
       tramo: tramo, cables: 0, areaMenor: 0, sd: 0, nMenor: 0, nMayor: 0, nControl: 0,
-      areaTotal: 0, peso: 0
+      areaTotal: 0, peso: 0, portadores: 0
     };
     lineas.forEach(function (l) {
       if (l.tramo !== tramo.id) return;
@@ -122,95 +170,110 @@
       if (d.clase === CLASE_CONTROL) r.nControl += cant;
       r.areaTotal += d.areaTotal || 0;
       r.peso += d.peso || 0;
+      if (d.clase !== CLASE_CONTROL) r.portadores += cant * (atributosCable(d.cable).conductores || 0);
     });
 
-    // Caso NEC (AZ): 0 = vacío/solo control, 1 = todos < 4/0, 2 = todos ≥ 4/0, 3 = mezcla
-    r.caso = r.cables === 0 ? 0 : (r.nMenor === 0 && r.nMayor === 0 ? 0 : (r.nMayor === 0 ? 1 : (r.nMenor === 0 ? 2 : 3)));
+    var serie = serieEfectiva(cx, tramo, p);
+    r.serie = serie;
+    r.sistema = serie.sistema || 'canasta';
+    var ducto = r.sistema === 'ducto';
+
+    // Caso NEC: 0 = vacío/solo control, 1 = todos < 4/0, 2 = todos ≥ 4/0, 3 = mezcla, 4 = ducto (376.22)
+    if (r.cables === 0) r.caso = 0;
+    else if (ducto) r.caso = 4;
+    else r.caso = r.nMenor === 0 && r.nMayor === 0 ? 0 : (r.nMayor === 0 ? 1 : (r.nMenor === 0 ? 2 : 3));
     r.casoTexto = r.cables === 0 ? '' : CASOS[r.caso];
 
     var tipoId = tramo.tipo || p.tipo;
     var tipo = cx.tipos[tipoId];
-    r.tipoNombre = tipo ? tipo.nombre : '';
+    r.tipoNombre = ducto ? SISTEMAS.ducto : (tipo ? tipo.nombre : '');
     r.ventilada = !tipo || tipo.baseNec !== 'solido';
     r.factorSd = r.ventilada ? num(p.sdVentilada) : num(p.sdSolido);
-    r.claro = num(tramo.claro) !== null ? num(tramo.claro) : num(p.claro);
-
-    var marca = cx.marcas[p.marca];
-    r.idxClaro = indiceClaro(marca, r.claro);
+    r.factorDucto = par(p, 'ductoFactor', 0.20);
+    r.claro = claroEfectivo(serie, tramo, p);
+    r.idxClaro = indiceClaro(serie, r.claro);
     var reserva = num(p.reserva);
+    var altoMax = par(p, 'altoMax', 150);
 
-    // Canasta recomendada: la primera (menor sección) que cumple NEC con reserva + ancho + carga por claro
+    // Recomendada: la primera (menor sección) de la línea que cumple NEC con reserva + ancho + carga por claro
     r.recomendada = null;
     if (r.caso !== 0) {
-      var lista = canastasDeMarca(cx, p.marca);
+      var lista = canastasDeSerie(cx, serie.id);
       for (var i = 0; i < lista.length; i++) {
         var c = lista[i];
         var okArea = true;
-        if (r.caso !== 2) {
+        if (ducto) {
+          var apd = areaPermitida(cx, c, 4, true, 0, 0, r.factorDucto);
+          okArea = apd !== null && r.areaTotal <= reserva * apd;
+        } else if (r.caso !== 2) {
           var ap = areaPermitida(cx, c, r.caso, r.ventilada, r.factorSd, r.sd);
           okArea = ap !== null && r.areaMenor <= reserva * ap;
         }
-        var okAncho = r.caso === 1 || r.sd <= num(c.anchoReal);
-        var cm = cargaMax(c, indiceClaro(cx.marcas[c.marca], r.claro));
+        var okAncho = ducto || r.caso === 1 || r.sd <= num(c.anchoReal);
+        var cm = cargaMax(c, r.idxClaro);
         var okCarga = cm === null ? true : r.peso <= cm;
-        if (okArea && okAncho && okCarga) { r.recomendada = c; break; }
+        // Además, el llenado real no debe superar el criterio Sinergia de prellenado
+        var au = areaUtil(c, r.sistema, altoMax);
+        var okReal = au !== null && au > 0 && r.areaTotal / au <= par(p, 'llenadoSinergia', LLENADO.sinergia);
+        if (okArea && okAncho && okCarga && okReal) { r.recomendada = c; break; }
       }
       r.recomendadaTexto = r.recomendada ? r.recomendada.nombre : '❌ ninguna cumple — divida el tramo';
     } else {
       r.recomendadaTexto = '';
     }
-    r.refRecomendada = r.recomendada ? referencia(r.recomendada, p) : '';
+    r.refRecomendada = r.recomendada ? referencia(cx, r.recomendada, p) : '';
 
-    // Canasta seleccionada
+    // Tamaño seleccionado
     var sel = tramo.canasta ? cx.canastas[tramo.canasta] : null;
     r.seleccionada = sel || null;
-    r.refSeleccionada = sel ? referencia(sel, p) : '';
-    r.areaPermitida = null; r.pctNec = null; r.cargaMax = null; r.pctCarga = null; r.pctBruta = null;
-    r.factorFab = sel ? num(sel.factor) : null;
+    r.refSeleccionada = sel ? referencia(cx, sel, p) : '';
+    r.areaPermitida = null; r.pctNec = null; r.cargaMax = null; r.pctCarga = null; r.pctBruta = null; r.estadoBruta = '';
 
     if (sel && r.caso !== 0) {
-      r.areaPermitida = areaPermitida(cx, sel, r.caso, r.ventilada, r.factorSd, r.sd);
+      r.areaPermitida = areaPermitida(cx, sel, r.caso, r.ventilada, r.factorSd, r.sd, r.factorDucto);
       if (r.caso === 2) r.pctNec = r.sd / num(sel.anchoReal);
       else if (r.areaPermitida === null) r.pctNec = null;
+      else if (ducto) r.pctNec = r.areaPermitida > 0 ? r.areaTotal / r.areaPermitida : 9.99;
       else r.pctNec = r.areaPermitida <= 0 ? 9.99 : r.areaMenor / r.areaPermitida;
     }
     if (sel && r.cables > 0) {
-      r.cargaMax = cargaMax(sel, indiceClaro(cx.marcas[sel.marca], r.claro));
-      r.pctCarga = r.cargaMax ? r.peso / r.cargaMax : null;
-      var altoEf = Math.min(num(sel.altoReal), num(p.altoMax));
-      var areaBruta = num(sel.anchoReal) * altoEf;
-      r.areaBruta = areaBruta;
-      r.pctBruta = areaBruta > 0 ? r.areaTotal / areaBruta : null;
+      var serieSel = cx.series[sel.serie] || serie;
+      r.cargaMax = cargaMax(sel, indiceClaro(serieSel, r.claro));
+      // carga 0 = claro no permitido para ese tamaño (el fabricante no publica carga a ese claro)
+      r.pctCarga = r.cargaMax === null ? null : (r.cargaMax > 0 ? r.peso / r.cargaMax : 9.99);
+      r.areaBruta = areaUtil(sel, r.sistema, altoMax);
+      r.pctBruta = r.areaBruta > 0 ? r.areaTotal / r.areaBruta : null;
+      r.estadoBruta = estadoLlenado(r.pctBruta, p);
     }
 
     // Veredicto (columna T)
     r.veredicto = ''; r.estado = '';
     if (r.cables > 0) {
-      if (!sel) { r.veredicto = '— seleccione canasta'; r.estado = 'pend'; }
+      if (!sel) { r.veredicto = '— seleccione tamaño'; r.estado = 'pend'; }
       else {
         var fallaArea = r.caso !== 0 && r.caso !== 2 && r.pctNec !== null && r.pctNec > 1;
         var fallaAncho = (r.caso === 2 || r.caso === 3) && r.sd > num(sel.anchoReal);
         var fallaPeso = r.pctCarga !== null && r.pctCarga > 1;
+        var fallaReal = r.estadoBruta === 'error';
         var sinNec = r.caso !== 0 && r.caso !== 2 && r.areaPermitida === null;
-        if (fallaArea || fallaAncho || fallaPeso) {
-          r.veredicto = '❌ NO CUMPLE —' + (fallaArea ? ' área NEC' : '') + (fallaAncho ? ' ancho' : '') + (fallaPeso ? ' peso/claro' : '');
+        if (fallaArea || fallaAncho || fallaPeso || fallaReal) {
+          r.veredicto = '❌ NO CUMPLE —' + (fallaArea ? (ducto ? ' área NEC 376.22' : ' área NEC') : '') + (fallaAncho ? ' ancho' : '') +
+            (fallaPeso ? ' peso/claro' : '') + (fallaReal ? ' llenado real > ' + Math.round(par(p, 'llenadoMax', LLENADO.maximo) * 100) + ' % (TIA-569)' : '');
           r.estado = 'error';
         } else if (sinNec) {
-          r.veredicto = '⚠ sin dato NEC para el ancho de la canasta'; r.estado = 'warn';
+          r.veredicto = ducto ? '⚠ faltan dimensiones del ducto' : '⚠ sin dato NEC para el ancho de la canasta'; r.estado = 'warn';
         } else if (r.pctNec !== null && r.pctNec > reserva) {
           r.veredicto = '⚠ supera la reserva de diseño'; r.estado = 'warn';
-        } else if (r.pctBruta !== null && r.factorFab !== null && r.pctBruta > r.factorFab) {
-          r.veredicto = '⚠ ocupación bruta > fabricante'; r.estado = 'warn';
+        } else if (r.estadoBruta === 'warn') {
+          r.veredicto = '⚠ llenado real > ' + Math.round(par(p, 'llenadoSinergia', LLENADO.sinergia) * 100) + ' % (criterio Sinergia)'; r.estado = 'warn';
+        } else if (ducto && r.portadores > par(p, 'ductoMaxConductores', 30)) {
+          r.veredicto = '⚠ > ' + par(p, 'ductoMaxConductores', 30) + ' conductores portadores: aplique ajuste 310.15(C)(1)'; r.estado = 'warn';
         } else {
           r.veredicto = '✔ CUMPLE'; r.estado = 'ok';
         }
       }
     }
     return r;
-  }
-
-  function referencia(canasta, p) {
-    return (canasta.codigo || '') + (p.acabado || '');
   }
 
   /* Cálculo de un nivel completo (pestaña de nivel + fila resumen 360) */
@@ -223,7 +286,8 @@
       c.datos = datosLinea(l, cx);
       return c;
     });
-    var res = { tramos: 0, cables: 0, errores: 0, advertencias: 0, longitud: 0, maxNec: null, maxCarga: null };
+    var res = { tramos: 0, cables: 0, errores: 0, advertencias: 0, longitud: 0, maxNec: null, maxCarga: null, maxReal: null };
+    var maxi = function (a, b) { return b === null || b === undefined ? a : (a === null ? b : Math.max(a, b)); };
     tramos.forEach(function (r) {
       if (r.cables > 0) res.tramos++;
       res.cables += r.cables;
@@ -231,8 +295,9 @@
       if (r.recomendadaTexto.charAt(0) === '❌') res.errores++;
       if (r.estado === 'warn') res.advertencias++;
       res.longitud += num(r.tramo.distancia) || 0;
-      if (r.pctNec !== null) res.maxNec = res.maxNec === null ? r.pctNec : Math.max(res.maxNec, r.pctNec);
-      if (r.pctCarga !== null) res.maxCarga = res.maxCarga === null ? r.pctCarga : Math.max(res.maxCarga, r.pctCarga);
+      res.maxNec = maxi(res.maxNec, r.pctNec);
+      res.maxCarga = maxi(res.maxCarga, r.pctCarga);
+      res.maxReal = maxi(res.maxReal, r.pctBruta);
     });
     checks.forEach(function (c) {
       if (c.nivel === 'error') res.errores++;
@@ -245,19 +310,21 @@
   function calcularProyecto(proyecto, catalogo) {
     var cx = prepararCatalogo(catalogo);
     var niveles = (proyecto.niveles || []).map(function (n) { return calcularNivel(n, proyecto, cx); });
-    var total = { tramos: 0, cables: 0, errores: 0, advertencias: 0, longitud: 0, maxNec: null, maxCarga: null };
+    var total = { tramos: 0, cables: 0, errores: 0, advertencias: 0, longitud: 0, maxNec: null, maxCarga: null, maxReal: null };
     var bomCanastas = {}, bomCables = {}, detalle = [];
     niveles.forEach(function (nv) {
       var r = nv.resumen;
       ['tramos', 'cables', 'errores', 'advertencias', 'longitud'].forEach(function (k) { total[k] += r[k]; });
-      if (r.maxNec !== null) total.maxNec = total.maxNec === null ? r.maxNec : Math.max(total.maxNec, r.maxNec);
-      if (r.maxCarga !== null) total.maxCarga = total.maxCarga === null ? r.maxCarga : Math.max(total.maxCarga, r.maxCarga);
+      ['maxNec', 'maxCarga', 'maxReal'].forEach(function (k) {
+        if (r[k] !== null) total[k] = total[k] === null ? r[k] : Math.max(total[k], r[k]);
+      });
 
       nv.tramos.forEach(function (t, i) {
-        // Lista de materiales de canasta: todo tramo con canasta seleccionada (igual que el Excel)
+        // Lista de materiales: todo tramo con tamaño seleccionado (igual que el Excel)
         if (t.seleccionada) {
           var k = t.seleccionada.id;
-          if (!bomCanastas[k]) bomCanastas[k] = { canasta: t.seleccionada, marca: cx.marcas[t.seleccionada.marca], referencia: t.refSeleccionada, tramos: 0, longitud: 0 };
+          var s = cx.series[t.seleccionada.serie] || {};
+          if (!bomCanastas[k]) bomCanastas[k] = { canasta: t.seleccionada, serie: s, marca: cx.marcas[s.marca || t.seleccionada.marca], referencia: t.refSeleccionada, tramos: 0, longitud: 0 };
           bomCanastas[k].tramos++;
           bomCanastas[k].longitud += num(t.tramo.distancia) || 0;
         }
@@ -278,7 +345,11 @@
       });
     });
 
-    var ordenCanasta = function (a, b) { return (a.canasta.orden || 0) - (b.canasta.orden || 0); };
+    var ordenSeries = {};
+    (catalogo.series || []).forEach(function (s, i) { ordenSeries[s.id] = i; });
+    var ordenCanasta = function (a, b) {
+      return ((ordenSeries[a.canasta.serie] || 0) - (ordenSeries[b.canasta.serie] || 0)) || ((a.canasta.orden || 0) - (b.canasta.orden || 0));
+    };
     return {
       cx: cx,
       niveles: niveles,
@@ -336,8 +407,14 @@
     atributosCable: atributosCable,
     textoHilos: textoHilos,
     CLASES: [CLASE_MENOR, CLASE_MAYOR, CLASE_CONTROL],
+    SISTEMAS: SISTEMAS,
+    LLENADO: LLENADO,
+    estadoLlenado: estadoLlenado,
     prepararCatalogo: prepararCatalogo,
-    canastasDeMarca: canastasDeMarca,
+    canastasDeSerie: canastasDeSerie,
+    serieEfectiva: serieEfectiva,
+    claroEfectivo: claroEfectivo,
+    acabadoDe: acabadoDe,
     calcularTramo: calcularTramo,
     calcularNivel: calcularNivel,
     calcularProyecto: calcularProyecto,

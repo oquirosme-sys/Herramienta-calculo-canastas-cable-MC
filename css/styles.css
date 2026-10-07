@@ -1,18 +1,18 @@
 /* Canastas MC — estilos
+ * Sistema visual Sinergia Suite: tesela squircle, vidrio translúcido, luz física y movimiento con inercia.
+ * El color identifica la aplicación (data-app en <body> → var(--app)); los colores de estado no se tocan.
  * Convención heredada del Excel: celdas VERDES = entrada manual. */
 :root {
-  --bg: #f4f6f9;
+  --bg: #fbfbfd;
   --panel: #ffffff;
-  --ink: #1b2430;
-  --ink-2: #4a5666;
-  --ink-3: #7b8796;
-  --line: #dde3ea;
-  --line-2: #eef1f5;
-  --navy: #14263f;
-  --navy-2: #1f3a5f;
-  --accent: #1f6feb;
+  --ink: #1d1d1f;
+  --ink-2: #4a5160;
+  --ink-3: #7b8190;
+  --line: #e1e4ea;
+  --line-2: #f0f2f5;
   --input: #eef8ef;
   --input-line: #9fd0a6;
+  /* Estado — no se redirige a var(--app) */
   --ok: #1a7f37;
   --ok-bg: #e6f4ea;
   --warn: #9a6700;
@@ -21,46 +21,80 @@
   --err-bg: #fde8e8;
   --pend: #57606a;
   --pend-bg: #eef0f3;
-  --radius: 8px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
-  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 14px rgba(16, 24, 40, .06);
+  --inercia: cubic-bezier(.34, 1.4, .64, 1);
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui, Roboto, Arial, sans-serif;
   font-size: 14px;
   color: var(--ink);
 }
+/* Registro de color por aplicación (Sinergia Suite). «canastas» es provisional hasta registrarla en suite-color.css */
+[data-app="canastas"] { --app: #0b7a95; --app-2: #2aa3c0; --app-tinte: rgba(11, 122, 149, .10); }
+[data-app="suite"] { --app: #385623; --app-2: #5b8a3a; --app-tinte: rgba(56, 86, 35, .10); }
+:root { --accent: var(--app, #0b7a95); }
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
+body {
+  margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+  /* Fondo con dos lavados muy tenues: el vidrio necesita algo detrás que desenfocar */
+  background:
+    radial-gradient(1200px 600px at 8% -10%, var(--app-tinte, transparent), transparent 60%),
+    radial-gradient(900px 500px at 105% 0%, rgba(56, 86, 35, .06), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.01em; }
 button { font: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--app) 35%, transparent); outline-offset: 1px; }
 
-/* ---------- Barra superior ---------- */
-.topbar {
-  background: var(--navy); color: #fff; display: flex; align-items: center; gap: 16px;
-  padding: 10px 20px; flex-wrap: wrap;
+/* ---------- Barra de vidrio (misma disposición en todas las apps del Suite) ---------- */
+.barra {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(251, 251, 253, .72);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, .07);
 }
-.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
-.brand-mark {
-  width: 34px; height: 34px; border-radius: 8px; background: #2e7d32; display: grid; place-items: center;
-  font-weight: 700; font-size: 18px;
+.barra-in { display: flex; align-items: center; gap: 14px; padding: 10px 20px; flex-wrap: wrap; }
+.volver {
+  color: var(--app); text-decoration: none; font-weight: 600; font-size: 13px; padding: 6px 10px; border-radius: 999px;
+  transition: background .25s var(--inercia);
 }
-.brand-sub { font-size: 11px; opacity: .7; letter-spacing: .04em; text-transform: uppercase; }
-.brand-title { font-size: 16px; font-weight: 600; }
-.project-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.project-bar select { background: var(--navy-2); color: #fff; border: 1px solid #3a5579; border-radius: 6px; padding: 6px 10px; max-width: 320px; }
-.save-state { font-size: 12px; opacity: .75; white-space: nowrap; }
-.save-state.dirty { color: #ffd166; opacity: 1; }
+.volver:hover { background: var(--app-tinte); }
+.app-id { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+/* Tesela: figura sólida con hombro, luz de arriba, filo interior y sombra teñida del propio color */
+.tesela {
+  width: 38px; height: 38px; border-radius: 23%; corner-shape: squircle; display: grid; place-items: center; flex: none;
+  background: linear-gradient(180deg, var(--app-2), var(--app));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 4px 10px color-mix(in srgb, var(--app) 35%, transparent);
+  transition: transform .35s var(--inercia);
+}
+.tesela svg { width: 22px; height: 22px; }
+.app-id:hover .tesela { transform: translateY(-1px) scale(1.04); }
+.app-marca { font-size: 11px; color: var(--ink-3); }
+.app-nombre { font-size: 16px; font-weight: 700; color: var(--app); letter-spacing: -.01em; }
+.barra-proyecto { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.barra-proyecto select { background: rgba(255, 255, 255, .8); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-width: 320px; }
+.save-state { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.save-state.dirty { color: var(--warn); }
 
-.btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 12px; line-height: 1.3; white-space: nowrap; }
-.btn:hover { border-color: #b9c3cf; }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: #1a5fd0; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 6px 12px; line-height: 1.3; white-space: nowrap;
+  transition: transform .25s var(--inercia), box-shadow .25s ease, background .2s ease;
+}
+.btn:hover { border-color: #c4c9d2; }
+.btn:active { transform: scale(.97); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--app-2), var(--app)); border-color: var(--app); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 2px 6px color-mix(in srgb, var(--app) 30%, transparent);
+}
+.btn-primary:hover { filter: brightness(1.05); border-color: var(--app); }
 .btn-danger { color: var(--err); }
 .btn-ghost { background: transparent; }
-.topbar .btn-ghost { color: #fff; border-color: #3a5579; }
-.btn-admin { background: transparent; color: #fff; border: 1px solid #3a5579; border-radius: 6px; padding: 6px 12px; }
-.btn-admin.on { background: #b26a00; border-color: #b26a00; }
+.btn-admin { background: rgba(255, 255, 255, .7); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+.btn-admin.on { background: var(--warn-bg); border-color: #f0c27a; color: var(--warn); }
 .btn-sm { padding: 3px 8px; font-size: 12px; }
 .btn-icon { border: none; background: none; color: var(--ink-3); padding: 2px 6px; border-radius: 4px; }
 .btn-icon:hover { background: var(--line-2); color: var(--ink); }
@@ -68,32 +102,31 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .menu { position: relative; }
 .menu-list {
-  position: absolute; right: 0; top: calc(100% + 4px); background: #fff; color: var(--ink); border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .18); min-width: 230px; padding: 6px; z-index: 50;
+  position: absolute; right: 0; top: calc(100% + 6px); color: var(--ink); border-radius: 12px; min-width: 230px; padding: 6px; z-index: 50;
+  background: rgba(255, 255, 255, .86); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, .08); box-shadow: 0 12px 32px rgba(0, 0, 0, .16);
 }
-.menu-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 5px; }
-.menu-list button:hover { background: var(--line-2); }
+.menu-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 7px; }
+.menu-list button:hover { background: var(--app-tinte); }
 .menu-list .danger { color: var(--err); }
 .menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 
-/* ---------- Pestañas ---------- */
-.tabs {
-  display: flex; gap: 2px; padding: 0 20px; background: var(--navy-2); overflow-x: auto; scrollbar-width: thin;
-  position: sticky; top: 0; z-index: 20;
+/* ---------- Secciones (pastillas sobre el vidrio) ---------- */
+.secciones { display: flex; align-items: center; gap: 4px; padding: 0 20px 10px; overflow-x: auto; scrollbar-width: thin; }
+.seccion {
+  border: 0; background: transparent; color: var(--ink-2); padding: 6px 14px; border-radius: 999px;
+  white-space: nowrap; display: flex; align-items: center; gap: 6px; font-weight: 500;
+  transition: background .25s var(--inercia), color .2s ease;
 }
-.tab {
-  border: 0; background: transparent; color: #c7d3e3; padding: 10px 14px; border-bottom: 3px solid transparent;
-  white-space: nowrap; display: flex; align-items: center; gap: 6px;
-}
-.tab:hover { color: #fff; }
-.tab.active { color: #fff; border-bottom-color: #4caf50; background: rgba(255, 255, 255, .06); }
-.tab .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.tab .dot.error { background: #ff6b6b; }
-.tab .dot.warn { background: #ffc145; }
-.tab .dot.ok { background: #57d07a; }
-.tab-sep { width: 1px; background: #3a5579; margin: 8px 6px; }
-.tab-add { color: #9fe0ae; }
-.tab-admin { color: #ffc977; }
+.seccion:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
+.seccion.activa { background: #fff; color: var(--app); box-shadow: 0 1px 3px rgba(0, 0, 0, .1), inset 0 0 0 1px rgba(0, 0, 0, .04); }
+.seccion .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.seccion .dot.error { background: var(--err); }
+.seccion .dot.warn { background: #e0a100; }
+.seccion .dot.ok { background: var(--ok); }
+.seccion-sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 6px; }
+.seccion-agregar { color: var(--app); }
+.seccion-admin { color: var(--warn); }
 
 /* ---------- Vista ---------- */
 .vista { padding: 20px; flex: 1; max-width: 100%; }
@@ -128,10 +161,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .tbl-wrap { overflow-x: auto; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th {
-  background: #f7f9fb; color: var(--ink-2); font-weight: 600; font-size: 11.5px; text-align: left; padding: 8px 8px;
-  border-bottom: 1px solid var(--line); vertical-align: bottom; line-height: 1.25;
+  background: color-mix(in srgb, var(--app) 6%, #fff); color: var(--app); font-weight: 600; font-size: 11.5px; text-align: left; padding: 8px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--app) 20%, var(--line)); vertical-align: bottom; line-height: 1.25;
 }
-.tbl th.grp { text-align: center; background: #eef2f7; font-size: 11px; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3); }
+.tbl th.grp { text-align: center; background: color-mix(in srgb, var(--app) 10%, #fff); font-size: 11px; color: var(--app); }
 .tbl th.in-col { background: #e7f4e9; }
 .tbl td { padding: 4px 8px; border-bottom: 1px solid var(--line-2); vertical-align: middle; white-space: nowrap; }
 .tbl tbody tr:hover td { background: #fafcff; }
@@ -177,7 +210,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* KPIs */
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
-.kpi .k { font-size: 11.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
+.kpi .k { font-size: 12px; color: var(--ink-3); }
 .kpi .v { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .kpi.error .v { color: var(--err); }
 .kpi.warn .v { color: var(--warn); }
@@ -198,46 +231,101 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* Ayuda */
 .help-list { display: grid; gap: 10px; }
 .help-item { display: grid; grid-template-columns: 30px 1fr; gap: 10px; line-height: 1.5; }
-.help-item b.l { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: var(--navy-2); color: #fff; font-size: 12px; }
+.help-item b.l { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 23%; background: linear-gradient(180deg, var(--app-2), var(--app)); color: #fff; font-size: 12px; }
 details.ref summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* Administración */
 .subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
 .subtab { border: 1px solid var(--line); background: #fff; padding: 6px 12px; border-radius: 999px; font-size: 13px; }
-.subtab.active { background: var(--navy-2); color: #fff; border-color: var(--navy-2); }
+.subtab.active { background: var(--app); color: #fff; border-color: var(--app); }
 .admin-banner { background: #fff4e0; border: 1px solid #f0c27a; color: #7a4a00; padding: 10px 14px; border-radius: var(--radius); margin-bottom: 14px; font-size: 13px; }
 
 /* Diálogo y toast */
-dialog { border: 0; border-radius: 10px; padding: 0; width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 50px rgba(0, 0, 0, .25); }
+dialog { border: 0; border-radius: 14px; padding: 0; width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 50px rgba(0, 0, 0, .25); }
 dialog::backdrop { background: rgba(15, 25, 40, .45); }
 dialog form { padding: 20px; }
 dialog h3 { font-size: 16px; margin-bottom: 12px; }
 dialog p { margin: 0 0 10px; color: var(--ink-2); line-height: 1.45; }
 .dlg-acciones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--navy); color: #fff; padding: 10px 16px; border-radius: 8px; opacity: 0; pointer-events: none; transition: .2s; z-index: 100; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: rgba(29, 29, 31, .86); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: #fff; padding: 10px 16px; border-radius: 12px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .35s var(--inercia); z-index: 100; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* Memoria — encabezado de impresión */
-.print-h { display: none; }
-.memoria section { break-inside: avoid-page; }
+/* Memoria — título y membrete solo al imprimir */
+.print-h, .membrete-impresion { display: none; }
 
 @media (max-width: 700px) {
   .vista { padding: 12px; }
-  .topbar { padding: 10px 12px; }
-  .tabs { padding: 0 8px; }
+  .barra-in { padding: 10px 12px; }
+  .secciones { padding: 0 8px 8px; }
   .nivel-row { grid-template-columns: 30px 1fr; }
   .nivel-row .info, .nivel-row .acts { grid-column: 2; }
 }
 
-@media print {
-  @page { size: letter landscape; margin: 12mm; }
-  body { background: #fff; font-size: 11px; }
-  .topbar, .tabs, .pie, .no-print, .toast { display: none !important; }
-  .vista { padding: 0; }
-  .card { box-shadow: none; border-color: #bbb; break-inside: auto; }
-  .print-h { display: flex; justify-content: space-between; border-bottom: 2px solid #14263f; padding-bottom: 6px; margin-bottom: 12px; }
-  .tbl-wrap { overflow: visible; }
-  .tbl th, .tbl td { padding: 3px 5px; }
-  .kpi { box-shadow: none; }
-  .chip { border: 1px solid currentColor; }
+/* ---------- Impresión de la memoria: Formato Sinergia ----------
+ * Carta; membrete con logo (invade el margen izquierdo como en «00. MEMBRETE SINERGIA»), pie de tres celdas;
+ * margen de página chico + padding del contenido = 3.0 cm laterales. Se verifica en el PDF, no en pantalla. */
+@page {
+  size: letter;
+  margin: 2.5cm 1.35cm 2.5cm 1.35cm;
+  @top-left { content: ""; width: 5.7cm; background: url("../img/sinergia-logo.jpg") no-repeat left center / 5.7cm 2cm; }
+  @top-right { content: "Sinergia Consultoría Mecánica y Eléctrica S.A\A Oficentro Plaza Roble, Edificio Pórtico, Escazú"; white-space: pre; font: 8pt Montserrat, Arial, sans-serif; color: #000; text-align: right; vertical-align: middle; }
+  @bottom-left { content: "Memoria de cálculo · canalizaciones"; width: 31%; font: 8pt Montserrat, Arial, sans-serif; color: #808080; vertical-align: top; padding-top: .5cm; }
+  @bottom-center { content: "www.sinergia.co.cr\A info@sinergia.co.cr"; width: 38%; white-space: pre; font: 8pt Montserrat, Arial, sans-serif; color: #385623; text-align: center; vertical-align: top; padding-top: .5cm; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); width: 31%; font: 8pt Montserrat, Arial, sans-serif; color: #808080; text-align: right; vertical-align: top; padding-top: .5cm; }
 }
+/* Tablas anchas: hoja apaisada con el mismo membrete */
+@page ancha {
+  size: letter landscape;
+  margin: 2.5cm 1.35cm 2.5cm 1.35cm;
+  @top-left { content: ""; width: 5.7cm; background: url("../img/sinergia-logo.jpg") no-repeat left center / 5.7cm 2cm; }
+  @top-right { content: "Sinergia Consultoría Mecánica y Eléctrica S.A\A Oficentro Plaza Roble, Edificio Pórtico, Escazú"; white-space: pre; font: 8pt Montserrat, Arial, sans-serif; color: #000; text-align: right; vertical-align: middle; }
+  @bottom-left { content: "Memoria de cálculo · canalizaciones"; width: 31%; font: 8pt Montserrat, Arial, sans-serif; color: #808080; vertical-align: top; padding-top: .5cm; }
+  @bottom-center { content: "www.sinergia.co.cr\A info@sinergia.co.cr"; width: 38%; white-space: pre; font: 8pt Montserrat, Arial, sans-serif; color: #385623; text-align: center; vertical-align: top; padding-top: .5cm; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); width: 31%; font: 8pt Montserrat, Arial, sans-serif; color: #808080; text-align: right; vertical-align: top; padding-top: .5cm; }
+}
+@media print {
+  body { background: #fff; font: 11pt/1.08 Montserrat, Arial, sans-serif; color: #000; display: block; }
+  .barra, .pie, .no-print, .toast, .kpis, .membrete-impresion { display: none !important; }
+  .vista { padding: 0 1.65cm; }
+  .memoria { counter-reset: tabla; }
+  .memoria p { margin: 0 0 8pt; text-align: justify; }
+  .print-h { display: block; margin: 0 0 14pt; }
+  .print-h h1 { font-size: 15pt; font-weight: 700; margin-bottom: 4pt; }
+  .print-h .sub { font-size: 10pt; color: #808080; }
+  .page-h { display: none; }
+  /* Cada sección es una tabla numerada: título encima y centrado */
+  .card { box-shadow: none; border: 0; border-radius: 0; margin: 0 0 16pt; break-inside: auto; background: none; }
+  .memoria section { counter-increment: tabla; }
+  .memoria section.ancha { page: ancha; }
+  .card-h { display: block; text-align: center; border: 0; padding: 0 0 6pt; }
+  .card-h h2 { font-size: 11pt; font-weight: 700; color: #000; }
+  .card-h h2::before { content: "Tabla No. " counter(tabla); display: block; font-weight: 400; }
+  .card-h .sub { display: block; font-size: 9pt; color: #808080; }
+  .card-b, .card-b.flush { padding: 0; }
+  .legend { border: 0; padding: 4pt 0 0; font-size: 8pt; color: #808080; }
+  /* Reglas horizontales nada más: gruesa arriba y bajo el encabezado, fina entre filas, ninguna vertical, sin relleno */
+  .tbl-wrap { overflow: visible; }
+  table.tbl { font-size: 9pt; border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000; }
+  .tbl th, .tbl th.grp, .tbl th.in-col { background: none; color: #000; font-weight: 400; font-size: 9pt; text-transform: none; border-bottom: 1pt solid #000; padding: 3pt 4pt; }
+  .tbl td { padding: 2.5pt 4pt; border-bottom: .25pt solid #9a9a9a; white-space: normal; }
+  .tbl td:empty::after { content: "—"; color: #808080; }
+  .tbl tbody tr:hover td, .tbl tr.sel td { background: none; }
+  .tbl tfoot td { background: none; border-top: 1pt solid #000; font-weight: 700; }
+  .tbl a { color: inherit; text-decoration: none; }
+  /* Criticidad: solo la palabra en color — sin píldora, sin fondo */
+  .chip, .chip.ok, .chip.warn, .chip.error, .chip.pend, .chip.alerta { background: none; border: 0; padding: 0; border-radius: 0; font-weight: 600; }
+  .pct .bar { display: none; }
+  .pct span { font-weight: 400; }
+}
+
+/* Criterio de llenado real (TIA-569 / BICSI · Sinergia) */
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.sw.ok { background: #57d07a; }
+.sw.alerta { background: #f2d024; }
+.sw.warn { background: #f08c00; }
+.sw.error { background: #e03131; }
+.reco-box { margin-top: 14px; background: #fff8db; border: 1px solid #f0d27a; border-radius: var(--radius); padding: 12px 16px; font-size: 13px; line-height: 1.55; color: #5c4400; }
+.reco-box ul { margin: 6px 0 0; padding-left: 4px; list-style: none; }
+.pct.alerta .bar i { background: #f2d024; }
+.pct.alerta span { color: #8a6d00; font-weight: 600; }
+.chip.alerta { background: #fff8db; color: #8a6d00; }
