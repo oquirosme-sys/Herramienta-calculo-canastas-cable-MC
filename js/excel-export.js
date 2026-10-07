@@ -124,7 +124,17 @@
       });
     });
     var nCan = Math.max(canastas.length, 1);
-    var cables = cat.cables.slice();
+    // Cables: los de la marca de cable del proyecto (ordenados por material, conductores y calibre) + los de otra marca ya usados
+    var fabCable = par.fabricanteCable;
+    var A = function (c) { return global.Calc.atributosCable(c); };
+    var cables = cat.cables.filter(function (c) { return !fabCable || c.fabricante === fabCable; }).sort(function (x, y) {
+      var a = A(x), b = A(y);
+      return (a.material === b.material ? 0 : a.material === 'Cu' ? -1 : 1) || (a.conductores - b.conductores) ||
+        (global.Calc.ordenCalibre(a.calibre) - global.Calc.ordenCalibre(b.calibre)) || (parseInt(a.hilos || '0', 10) - parseInt(b.hilos || '0', 10));
+    });
+    P.niveles.forEach(function (n) {
+      n.cables.forEach(function (l) { var c = cabPorId[l.cable]; if (c && cables.indexOf(c) < 0) cables.push(c); });
+    });
     var nCab = Math.max(cables.length, 1);
 
     // Misma estructura en todas las hojas de nivel
@@ -179,7 +189,7 @@
 
     /* ---------- Cables (catálogo) ---------- */
     put(wsCab, 'B2', 'CATÁLOGO DE CABLES MC (exportado desde la herramienta)', E.seccion);
-    ['Cable', 'Peso (lb/1000 ft)', 'Diámetro (in)', 'Diámetro (mm)', 'Clase NEC', 'Fabricante'].forEach(function (h, i) { put(wsCab, L(2 + i) + '4', h, E.hdr); });
+    ['Cable', 'Peso (lb/1000 ft)', 'Diámetro (in)', 'Diámetro (mm)', 'Clase NEC', 'Fabricante', 'Material', '# conductores', 'Calibre', 'Hilos'].forEach(function (h, i) { put(wsCab, L(2 + i) + '4', h, E.hdr); });
     var fabs = {};
     cat.fabricantesCable.forEach(function (f) { fabs[f.id] = f.nombre; });
     cables.forEach(function (c, i) {
@@ -187,6 +197,8 @@
       put(wsCab, 'B' + r, c.nombre); put(wsCab, 'C' + r, numVal(c.peso));
       put(wsCab, 'D' + r, '=IF(E' + r + '="","",E' + r + '/25.4)', { numFmt: '0.000' });
       put(wsCab, 'E' + r, numVal(c.diam)); put(wsCab, 'F' + r, c.clase); put(wsCab, 'G' + r, fabs[c.fabricante] || '');
+      var at = A(c);
+      put(wsCab, 'H' + r, at.material); put(wsCab, 'I' + r, at.conductores); put(wsCab, 'J' + r, at.calibre); put(wsCab, 'K' + r, at.hilos);
     });
     var cabFin = 4 + nCab;
     wsCab.getColumn(2).width = 52; [3, 4, 5].forEach(function (k) { wsCab.getColumn(k).width = 12; }); wsCab.getColumn(6).width = 16; wsCab.getColumn(7).width = 14;
@@ -275,12 +287,13 @@
       ['Factor Sd — escalera / ventilada (× Σ diámetros ≥ 4/0)', numVal(par.sdVentilada), '0', null, 'NEC 392.22(A)(1)(b): área permitida = Columna 2 base − 30·Sd.', 'PRY_SD_V'],
       ['Factor Sd — fondo sólido (× Σ diámetros ≥ 4/0)', numVal(par.sdSolido), '0', null, 'Ídem para fondo sólido: Columna 4 base − 25·Sd.', 'PRY_SD_S'],
       ['Marca de canasta / Brand', marca.nombre || '', null, null, 'Fija para este libro (catálogo oculto «Canastas»). Para otra marca, exporte de nuevo desde la herramienta.', 'PRY_MARCA'],
-      ['Acabado / Finish', par.acabado || '', null, 'LISTA_ACABADO', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ).', 'PRY_ACABADO']
+      ['Acabado / Finish', par.acabado || '', null, 'LISTA_ACABADO', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ).', 'PRY_ACABADO'],
+      ['Marca de cable / Cable brand', (cat.fabricantesCable.filter(function (f) { return f.id === fabCable; })[0] || {}).nombre || '', null, null, 'Una sola marca para el proyecto: la lista de cables de los niveles muestra solo esta marca. Para otra marca, exporte de nuevo desde la herramienta.', 'PRY_MARCA_CABLE']
     ];
     params.forEach(function (x, i) {
       var r = 16 + i;
       put(wsP, 'D' + r, x[0], con(E.sal, { alignment: { wrapText: true } }));
-      put(wsP, 'F' + r, x[1], con(x[5] === 'PRY_MARCA' ? E.sal : E.ent, x[2] ? { numFmt: x[2] } : null));
+      put(wsP, 'F' + r, x[1], con(x[5] === 'PRY_MARCA' || x[5] === 'PRY_MARCA_CABLE' ? E.sal : E.ent, x[2] ? { numFmt: x[2] } : null));
       put(wsP, 'G' + r, x[4], con(E.sal, { alignment: { wrapText: true }, font: { size: 9 } }));
       if (x[3]) lista(wsP, 'F' + r, x[3]);
       dn.add('Proyecto!$F$' + r, x[5]);

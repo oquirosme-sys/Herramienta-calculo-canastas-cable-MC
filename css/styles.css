@@ -147,6 +147,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl select.cell { padding: 4px 4px; }
 .tbl .w-xs { width: 70px; }
 .tbl .w-s { width: 95px; }
+.tbl .w-sel { min-width: 112px; }
 .tbl .w-m { min-width: 170px; }
 .tbl .w-l { min-width: 240px; }
 .tbl .w-xl { min-width: 360px; }

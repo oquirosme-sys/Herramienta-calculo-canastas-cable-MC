@@ -77,7 +77,7 @@
     if (!linea.tramo) return { aviso: '❌ asigne el tramo', nivel: 'error' };
     if (tramosIds.indexOf(linea.tramo) < 0) return { aviso: '❌ tramo inválido', nivel: 'error' };
     var cable = cx.cables[linea.cable];
-    if (!linea.cable) return { aviso: '❌ elija el cable', nivel: 'error' };
+    if (!linea.cable) return { aviso: '❌ complete material, conductores y calibre', nivel: 'error' };
     if (!cable) return { aviso: '❌ cable no está en el catálogo', nivel: 'error' };
     if (num(linea.cant) === null) return { aviso: '⚠ falta cantidad', nivel: 'warn' };
     if ([CLASE_MENOR, CLASE_MAYOR, CLASE_CONTROL].indexOf(cable.clase) < 0) return { aviso: '⚠ clase no reconocida', nivel: 'warn' };
@@ -290,7 +290,51 @@
     };
   }
 
+  /* Normaliza un calibre: «12AWG» → «12 AWG», «4/0» → «4/0 AWG», «500» / «500kcmil» → «500 kcmil» */
+  function normalizarCalibre(tok) {
+    var t = String(tok || '').replace(/\s+/g, '').replace(/awg$/i, '').replace(/kcmil$/i, '');
+    if (!t) return '';
+    if (t.indexOf('/') > 0) return t + ' AWG';
+    var n = Number(t);
+    if (!isFinite(n)) return String(tok);
+    return n >= 250 ? n + ' kcmil' : n + ' AWG';
+  }
+  /* Orden de calibres: 14, 12, 10 … 1, 1/0 … 4/0, 250 kcmil … */
+  function ordenCalibre(cal) {
+    var m = String(cal || '').match(/^(\d+)(\/0)?\s*(AWG|kcmil)?/i);
+    if (!m) return 1e9;
+    var n = Number(m[1]);
+    if (m[2]) return n - 1;
+    if (/kcmil/i.test(m[3] || '')) return 1000 + n;
+    return -n;
+  }
+  /* Atributos de un cable (material, # conductores, calibre, hilos, aislamiento, artículo).
+   * Usa los campos del catálogo y, si faltan, los deduce del nombre
+   * («MC Cu THHN 3C 12AWG 19h (SLDM03) Viakon»). */
+  function atributosCable(c) {
+    var a = { material: c.material || '', conductores: num(c.conductores), calibre: c.calibre || '', hilos: c.hilos || '', aislamiento: c.aislamiento || '', articulo: c.articulo || '' };
+    var m = String(c.nombre || '').match(/^MC\s+(Cu|Al)\s+(\S+)\s+(\d+)C\s+(\S+)(?:\s+(\d+h))?(?:\s+\(([^)]+)\))?/i);
+    if (m) {
+      if (!a.material) a.material = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      if (!a.aislamiento) a.aislamiento = m[2];
+      if (a.conductores === null) a.conductores = Number(m[3]);
+      if (!a.calibre) a.calibre = normalizarCalibre(m[4]);
+      if (!a.hilos && m[5]) a.hilos = m[5];
+      if (!a.articulo && m[6]) a.articulo = m[6];
+    }
+    return a;
+  }
+  function textoHilos(h) {
+    if (!h) return 'Estándar';
+    var n = parseInt(h, 10);
+    return n === 1 ? 'Sólido (1 hilo)' : 'Cableado (' + n + ' hilos)';
+  }
+
   global.Calc = {
+    normalizarCalibre: normalizarCalibre,
+    ordenCalibre: ordenCalibre,
+    atributosCable: atributosCable,
+    textoHilos: textoHilos,
     CLASES: [CLASE_MENOR, CLASE_MAYOR, CLASE_CONTROL],
     prepararCatalogo: prepararCatalogo,
     canastasDeMarca: canastasDeMarca,

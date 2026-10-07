@@ -117,7 +117,8 @@
       id: uid('p'), numero: '', nombre: '', ubicacion: '', fecha: '', elaboro: '',
       parametros: {
         reserva: 0.7, claro: marca.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
-        sdVentilada: 30, sdSolido: 25, marca: marca.id, acabado: marca.acabados[0] || ''
+        sdVentilada: 30, sdSolido: 25, marca: marca.id, acabado: marca.acabados[0] || '',
+        fabricanteCable: (cat.fabricantesCable[0] || {}).id || ''
       },
       niveles: []
     }, datos || {});
@@ -128,6 +129,88 @@
   function nuevoTramo() { return { id: uid('t'), nombre: '', tipo: '', claro: '', canasta: '', distancia: '' }; }
   function nuevaLinea(tramoId) { return { id: uid('l'), tramo: tramoId || '', cable: '', cant: '' }; }
   function nivelPorId(id) { return S.proyecto.niveles.filter(function (n) { return n.id === id; })[0]; }
+
+  /* ---- Selección de cable por material → # conductores → calibre → hilos, dentro de la marca del proyecto ---- */
+  var CAMPOS_CABLE = ['material', 'conductores', 'calibre', 'hilos'];
+  var NOMBRE_MATERIAL = { Cu: 'Cobre', Al: 'Aluminio' };
+  function cablePorId(id) { return S.catalogo.cables.filter(function (c) { return c.id === id; })[0] || null; }
+  function cablesDeMarca() {
+    var fab = S.proyecto.parametros.fabricanteCable;
+    return S.catalogo.cables.filter(function (c) { return !fab || c.fabricante === fab; });
+  }
+  /* Selección vigente de una línea: la de su cable, o la selección parcial guardada */
+  function seleccionLinea(l) {
+    var c = l.cable ? cablePorId(l.cable) : null;
+    if (c) {
+      var a = Calc.atributosCable(c);
+      return { material: a.material, conductores: a.conductores, calibre: a.calibre, hilos: a.hilos };
+    }
+    return { material: l.material || '', conductores: l.conductores === '' || l.conductores === undefined ? null : l.conductores, calibre: l.calibre || '', hilos: l.hilos || '' };
+  }
+  /* Opciones de un campo según los campos anteriores ya elegidos */
+  function opcionesCampo(campo, sel) {
+    var idx = CAMPOS_CABLE.indexOf(campo), vistos = {}, out = [];
+    cablesDeMarca().forEach(function (c) {
+      var a = Calc.atributosCable(c);
+      for (var i = 0; i < idx; i++) if (a[CAMPOS_CABLE[i]] !== sel[CAMPOS_CABLE[i]]) return;
+      var v = a[campo];
+      if (v === null || v === undefined || vistos[v]) return;
+      vistos[v] = 1; out.push(v);
+    });
+    var orden = {
+      material: function (x, y) { return (x === 'Cu' ? 0 : 1) - (y === 'Cu' ? 0 : 1) || String(x).localeCompare(y); },
+      conductores: function (x, y) { return x - y; },
+      calibre: function (x, y) { return Calc.ordenCalibre(x) - Calc.ordenCalibre(y); },
+      hilos: function (x, y) { return parseInt(x || '0', 10) - parseInt(y || '0', 10); }
+    };
+    return out.sort(orden[campo]);
+  }
+  /* Busca el cable único de la marca que corresponde a la selección */
+  function resolverLinea(l) {
+    var lista = cablesDeMarca().filter(function (c) {
+      var a = Calc.atributosCable(c);
+      return a.material === l.material && a.conductores === l.conductores && a.calibre === l.calibre;
+    });
+    if (lista.length > 1) lista = lista.filter(function (c) { return Calc.atributosCable(c).hilos === l.hilos; });
+    if (lista.length === 1) { l.cable = lista[0].id; l.hilos = Calc.atributosCable(lista[0]).hilos; }
+    else l.cable = '';
+  }
+  function cambiarCampoCable(l, campo, valor) {
+    var s = seleccionLinea(l);
+    CAMPOS_CABLE.forEach(function (k) { l[k] = s[k]; });
+    l[campo] = campo === 'conductores' ? (valor === '' ? null : Number(valor)) : valor;
+    // Los campos siguientes se limpian si ya no aplican; con una sola opción se completan solos
+    for (var i = CAMPOS_CABLE.indexOf(campo) + 1; i < CAMPOS_CABLE.length; i++) {
+      var k = CAMPOS_CABLE[i], ops = opcionesCampo(k, l);
+      if (ops.indexOf(l[k]) < 0) l[k] = ops.length === 1 ? ops[0] : (k === 'conductores' ? null : '');
+    }
+    resolverLinea(l);
+  }
+  /* Al cambiar la marca de cable del proyecto: cada línea pasa al cable equivalente de la nueva marca */
+  function remapearMarcaCable() {
+    var fab = S.proyecto.parametros.fabricanteCable, cambiadas = 0, sinEquivalente = 0;
+    S.proyecto.niveles.forEach(function (nv) {
+      nv.cables.forEach(function (l) {
+        var c = l.cable ? cablePorId(l.cable) : null;
+        if (!c || c.fabricante === fab) return;
+        var s = seleccionLinea(l);
+        CAMPOS_CABLE.forEach(function (k) { l[k] = s[k]; });
+        resolverLinea(l);
+        if (!l.cable) {
+          var ops = opcionesCampo('hilos', l);
+          if (ops.length) { l.hilos = ops[ops.length - 1]; resolverLinea(l); }
+        }
+        if (l.cable) cambiadas++; else sinEquivalente++;
+      });
+    });
+    if (cambiadas || sinEquivalente) toast(cambiadas + ' línea(s) cambiadas a la nueva marca' + (sinEquivalente ? ' · ' + sinEquivalente + ' sin equivalente: revíselas' : ''));
+  }
+  function marcaCablePorUso(p) {
+    var cuenta = {};
+    p.niveles.forEach(function (nv) { nv.cables.forEach(function (l) { var c = cablePorId(l.cable); if (c) cuenta[c.fabricante] = (cuenta[c.fabricante] || 0) + 1; }); });
+    var mejor = Object.keys(cuenta).sort(function (a, b) { return cuenta[b] - cuenta[a]; })[0];
+    return mejor || (S.catalogo.fabricantesCable[0] || {}).id || '';
+  }
 
   /* Proyecto de ejemplo = datos de la pestaña N01 del Excel */
   function proyectoEjemplo() {
@@ -278,6 +361,9 @@
       '<select data-bind="par.marca">' + cat.marcas.map(function (m) { return opt(m.id, m.nombre, m.id === par.marca); }).join('') + '</select>', esc(marca.nota || '')));
     h.push(campo('Acabado / Finish',
       '<select data-bind="par.acabado">' + (marca.acabados || []).map(function (a) { return opt(a, a, a === par.acabado); }).join('') + '</select>', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ).'));
+    h.push(campo('Marca de cable / Cable brand',
+      '<select data-bind="par.fabricanteCable">' + cat.fabricantesCable.map(function (f) { return opt(f.id, f.nombre, f.id === par.fabricanteCable); }).join('') + '</select>',
+      'Una sola marca para todo el proyecto. En cada nivel el cable se elige por material, # de conductores y calibre.'));
     h.push(campo('Tipo de canasta por defecto',
       '<select data-bind="par.tipo">' + cat.tiposCanasta.map(function (t) { return opt(t.id, t.nombre, t.id === par.tipo); }).join('') + '</select>', 'Escalera / ventilada usa Col. 1-2 y 30·Sd; fondo sólido usa Col. 3-4 y 25·Sd.'));
     h.push(campo('Claro entre soportes por defecto (ft)',
@@ -318,24 +404,6 @@
   }
 
   /* ================= Vista: Nivel ================= */
-  function opcionesCables(seleccion) {
-    if (!opcionesCables._cache || opcionesCables._ver !== S.catalogo) {
-      var cat = S.catalogo, grupos = {};
-      var fabs = {};
-      cat.fabricantesCable.forEach(function (f) { fabs[f.id] = f.nombre; });
-      cat.cables.forEach(function (c) {
-        var g = (fabs[c.fabricante] || 'Otro') + ' · ' + c.clase;
-        (grupos[g] = grupos[g] || []).push(c);
-      });
-      opcionesCables._cache = Object.keys(grupos).sort().map(function (g) {
-        return '<optgroup label="' + esc(g) + '">' + grupos[g].map(function (c) { return opt(c.id, c.nombre); }).join('') + '</optgroup>';
-      }).join('');
-      opcionesCables._ver = S.catalogo;
-    }
-    var base = '<option value="">— elija el cable —</option>' + opcionesCables._cache;
-    return seleccion ? base.replace('value="' + esc(seleccion) + '"', 'value="' + esc(seleccion) + '" selected') : base;
-  }
-
   function vistaNivel(nivel) {
     var nv = R.niveles.filter(function (x) { return x.nivel.id === nivel.id; })[0];
     var par = S.proyecto.parametros, cat = S.catalogo, marca = marcaActual();
@@ -423,7 +491,7 @@
       opt('', 'Todos los tramos', !filtro) + nivel.tramos.map(function (t, i) { return opt(t.id, (i + 1) + ' · ' + (t.nombre || 'Tramo ' + (i + 1)), t.id === filtro); }).join('') + '</select>' +
       '<button class="btn btn-primary btn-sm" data-act="linea-agregar" data-nivel="' + nivel.id + '" data-id="' + esc(filtro) + '">＋ Agregar línea</button>' +
       '<button class="btn btn-sm" data-act="linea-agregar5" data-nivel="' + nivel.id + '" data-id="' + esc(filtro) + '">＋ 5 líneas</button></div></div>');
-    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th class="in-col">Tramo</th><th class="in-col">Cable (catálogo)</th><th class="in-col n">Cant.</th>' +
+    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th class="in-col">Tramo</th><th class="in-col">Material</th><th class="in-col"># cond.</th><th class="in-col">Calibre</th><th class="in-col">Hilos</th><th>Cable (referencia)</th><th class="in-col n">Cant.</th>' +
       '<th class="n">Diám. (mm)</th><th class="n">Área unit. (mm²)</th><th>Clase NEC</th><th class="n">Área total (mm²)</th><th class="n">Σ diámetros (mm)</th><th class="n">Peso (lb/ft)</th><th>Aviso</th><th></th></tr></thead><tbody>');
     var visibles = 0;
     nivel.cables.forEach(function (l, i) {
@@ -432,7 +500,7 @@
       var c = nv.checks[i], d = c.datos, k = nivel.id + '|' + l.id + '|';
       h.push('<tr><td class="muted">' + (i + 1) + '</td>' +
         '<td><select class="cell w-m" data-l="' + k + 'tramo">' + tramoOpts(l.tramo) + '</select></td>' +
-        '<td><select class="cell w-xl" data-l="' + k + 'cable">' + opcionesCables(l.cable) + '</select></td>' +
+        celdasCable(l, k) +
         '<td><input class="cell w-xs" data-l="' + k + 'cant" data-type="num" value="' + esc(l.cant) + '"></td>' +
         '<td class="n">' + (d ? fmt(d.diam, 2) : '') + '</td>' +
         '<td class="n">' + (d ? fmt(d.areaUnit, 1) : '') + '</td>' +
@@ -443,11 +511,34 @@
         '<td>' + chip(c.aviso, c.nivel) + '</td>' +
         '<td><button class="btn-icon del" tabindex="-1" data-act="linea-eliminar" data-nivel="' + nivel.id + '" data-id="' + l.id + '" title="Eliminar línea">✕</button></td></tr>');
     });
-    if (!visibles) h.push('<tr><td colspan="12" class="empty">' + (filtro ? 'Este tramo no tiene cables.' : 'Sin cables. Use «Agregar línea» o el botón «＋ cable» de un tramo.') + '</td></tr>');
+    if (!visibles) h.push('<tr><td colspan="16" class="empty">' + (filtro ? 'Este tramo no tiene cables.' : 'Sin cables. Use «Agregar línea» o el botón «＋ cable» de un tramo.') + '</td></tr>');
     h.push('</tbody></table></div>');
     h.push('<div class="legend">Los cables 4/0 y mayores van en UNA sola capa. Los cables de control/señal no entran en el chequeo de área NEC. Verifique además la ampacidad (NEC 392.80(A)), soportes (392.30), curvas y separaciones.</div>');
     h.push('</div></div>');
     return h.join('');
+  }
+
+  /* Celdas de selección del cable: material → # conductores → calibre → hilos, y la referencia resultante */
+  function celdasCable(l, k) {
+    var s = seleccionLinea(l), cab = l.cable ? cablePorId(l.cable) : null;
+    var otraMarca = cab && cab.fabricante !== S.proyecto.parametros.fabricanteCable;
+    var sel = function (campo, cls, etiqueta) {
+      var ops = opcionesCampo(campo, s), v = s[campo];
+      if (v !== null && v !== '' && ops.indexOf(v) < 0) ops = [v].concat(ops);
+      return '<td><select class="cell ' + cls + '" data-l="' + k + campo + '"><option value="">—</option>' +
+        ops.map(function (o) { return opt(o, etiqueta(o), o === v); }).join('') + '</select></td>';
+    };
+    var h = sel('material', 'w-sel', function (o) { return NOMBRE_MATERIAL[o] || o; }) +
+      sel('conductores', 'w-xs', function (o) { return o + 'C'; }) +
+      sel('calibre', 'w-sel', function (o) { return o; });
+    var opsH = s.calibre ? opcionesCampo('hilos', s) : [];
+    if (opsH.length > 1) h += sel('hilos', 'w-m', Calc.textoHilos);
+    else h += '<td class="muted">' + (cab || opsH.length ? esc(Calc.textoHilos(cab ? s.hilos : opsH[0])) : '') + '</td>';
+    var a = cab ? Calc.atributosCable(cab) : null;
+    h += '<td class="muted" title="' + esc(cab ? cab.nombre : '') + '">' +
+      (cab ? esc([a.aislamiento, a.articulo].filter(Boolean).join(' · ') || cab.nombre) : '') +
+      (otraMarca ? ' ' + chip('⚠ otra marca', 'warn') : '') + '</td>';
+    return h;
   }
 
   function kpi(k, v, cls) {
@@ -483,6 +574,7 @@
       fila('Ocupación bruta', 'Área de todos los cables ÷ (ancho interior real × min(alto, ' + esc(par.altoMax) + ' mm)). Referencia del fabricante; NO es el cumplimiento NEC.') +
       fila('Tipo / claro por defecto', esc(tipoDef) + ' · ' + fmt(par.claro, 2) + ' ft') +
       fila('Fabricante de canasta', esc(marca.nombre) + ' — acabado ' + esc(par.acabado)) +
+      fila('Marca de cable', esc((cat.fabricantesCable.filter(function (f) { return f.id === par.fabricanteCable; })[0] || {}).nombre || '')) +
       fila('Limitaciones', 'No incluye ampacidad (NEC 392.80(A)), soportes (392.30) ni curvas. Cables de control/señal: fuera del chequeo de área NEC. Verifique la tabla 392.22(A) contra la edición vigente.') +
       '</tbody></table></div></section>');
 
@@ -515,10 +607,11 @@
     var fabs = {};
     cat.fabricantesCable.forEach(function (f) { fabs[f.id] = f.nombre; });
     h.push('<section class="card"><div class="card-h"><h2>Cables por tipo</h2><span class="sub">Longitud estimada = cantidad × distancia del tramo (sin colas ni subidas)</span></div><div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-      '<th>Cable</th><th>Fabricante</th><th>Clase NEC</th><th class="n">Cantidad (corridas)</th><th class="n">Longitud estimada (m)</th><th class="n">Peso estimado (kg)</th></tr></thead><tbody>');
-    if (!R.bomCables.length) h.push('<tr><td colspan="6" class="empty">Sin cables asignados.</td></tr>');
+      '<th>Material</th><th class="n"># cond.</th><th>Calibre</th><th>Cable (referencia)</th><th>Fabricante</th><th>Clase NEC</th><th class="n">Cantidad (corridas)</th><th class="n">Longitud estimada (m)</th><th class="n">Peso estimado (kg)</th></tr></thead><tbody>');
+    if (!R.bomCables.length) h.push('<tr><td colspan="9" class="empty">Sin cables asignados.</td></tr>');
     R.bomCables.forEach(function (b) {
-      h.push('<tr><td>' + esc(b.cable.nombre) + '</td><td>' + esc(fabs[b.cable.fabricante] || '') + '</td><td class="muted">' + esc(b.cable.clase) + '</td><td class="n">' + fmt(b.cantidad, 0) + '</td><td class="n">' + fmt(b.longitud, 1) + '</td><td class="n">' + fmt(b.peso * 0.45359237, 1) + '</td></tr>');
+      var at = Calc.atributosCable(b.cable);
+      h.push('<tr><td>' + esc(NOMBRE_MATERIAL[at.material] || at.material) + '</td><td class="n">' + esc(at.conductores) + 'C</td><td>' + esc(at.calibre) + '</td><td>' + esc(b.cable.nombre) + '</td><td>' + esc(fabs[b.cable.fabricante] || '') + '</td><td class="muted">' + esc(b.cable.clase) + '</td><td class="n">' + fmt(b.cantidad, 0) + '</td><td class="n">' + fmt(b.longitud, 1) + '</td><td class="n">' + fmt(b.peso * 0.45359237, 1) + '</td></tr>');
     });
     h.push('</tbody></table></div></div></section>');
 
@@ -638,13 +731,19 @@
       '<select class="in" data-filtro="admin-fab">' + opt('', 'Todos los fabricantes', !F.fab) + fabs.map(function (f) { return opt(f[0], f[1], f[0] === F.fab); }).join('') + '</select>' +
       '<select class="in" data-filtro="admin-clase">' + opt('', 'Todas las clases', !F.clase) + clases.map(function (c) { return opt(c[0], c[1], c[0] === F.clase); }).join('') + '</select>' +
       '<button class="btn btn-primary btn-sm" data-act="admin-add" data-col="cables">＋ Agregar cable</button></div></div>'];
-    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre / descripción</th><th>Fabricante</th><th>Clase NEC</th><th class="n">Peso (lb/1000 ft)</th><th class="n">Diámetro ext. (mm)</th><th class="n">Diámetro (in)</th><th class="n">Área (mm²)</th><th></th></tr></thead><tbody>');
+    h.push('<div class="card-b flush"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre / descripción</th><th>Fabricante</th><th>Material</th><th class="n"># cond.</th><th>Calibre</th><th>Hilos</th><th>Aislamiento</th><th>Artículo</th><th>Clase NEC</th><th class="n">Peso (lb/1000 ft)</th><th class="n">Diámetro ext. (mm)</th><th class="n">Diámetro (in)</th><th class="n">Área (mm²)</th><th></th></tr></thead><tbody>');
     lista.forEach(function (c) {
       h.push('<tr><td>' + aIn('cables', c.id, 'nombre', c.nombre, '', 'w-xl') + '</td><td>' + aSel('cables', c.id, 'fabricante', c.fabricante, fabs, 'w-s') + '</td>' +
+        '<td>' + aSel('cables', c.id, 'material', c.material, [['Cu', 'Cobre (Cu)'], ['Al', 'Aluminio (Al)']], 'w-s') + '</td>' +
+        '<td>' + aIn('cables', c.id, 'conductores', c.conductores, 'num', 'w-xs') + '</td>' +
+        '<td>' + aIn('cables', c.id, 'calibre', c.calibre, '', 'w-s') + '</td>' +
+        '<td>' + aIn('cables', c.id, 'hilos', c.hilos, '', 'w-xs') + '</td>' +
+        '<td>' + aIn('cables', c.id, 'aislamiento', c.aislamiento, '', 'w-s') + '</td>' +
+        '<td>' + aIn('cables', c.id, 'articulo', c.articulo, '', 'w-s') + '</td>' +
         '<td>' + aSel('cables', c.id, 'clase', c.clase, clases, 'w-s') + '</td><td>' + aIn('cables', c.id, 'peso', c.peso, 'num', 'w-s') + '</td>' +
         '<td>' + aIn('cables', c.id, 'diam', c.diam, 'num', 'w-xs') + '</td><td class="n muted">' + fmt(c.diam / 25.4, 3) + '</td><td class="n muted">' + fmt(Math.PI * Math.pow(c.diam / 2, 2), 1) + '</td><td>' + aDel('cables', c.id) + '</td></tr>');
     });
-    h.push('</tbody></table></div><div class="legend">Clase NEC: «MC &lt; 4/0» entra en la suma de áreas; «MC &gt;= 4/0» en la suma de diámetros (Sd); «CONTROL/SEÑAL» queda fuera del chequeo de área NEC (solo peso y ocupación bruta).</div></div></div>');
+    h.push('</tbody></table></div><div class="legend">Clase NEC: «MC &lt; 4/0» entra en la suma de áreas; «MC &gt;= 4/0» en la suma de diámetros (Sd); «CONTROL/SEÑAL» queda fuera del chequeo de área NEC (solo peso y ocupación bruta). Material, # de conductores, calibre (ej. «12 AWG», «4/0 AWG», «500 kcmil») e hilos («1h» sólido, «19h» cableado) definen cómo se elige el cable en los niveles.</div></div></div>');
     return h.join('');
   }
   function adminFabricantes() {
@@ -716,6 +815,7 @@
           if ((m.acabados || []).indexOf(S.proyecto.parametros.acabado) < 0) S.proyecto.parametros.acabado = (m.acabados || [])[0] || '';
           if ((m.claros || []).indexOf(Number(S.proyecto.parametros.claro)) < 0) S.proyecto.parametros.claro = (m.claros || [])[0] || '';
         }
+        if (k === 'fabricanteCable') remapearMarcaCable();
       } else S.proyecto[a] = val;
       guardar(); return renderPronto();
     }
@@ -733,7 +833,8 @@
     if ((a = el.getAttribute('data-l'))) {
       var r = a.split('|'), nv2 = nivelPorId(r[0]);
       var l = nv2.cables.filter(function (x) { return x.id === r[1]; })[0];
-      l[r[2]] = valorDe(el);
+      if (CAMPOS_CABLE.indexOf(r[2]) >= 0) cambiarCampoCable(l, r[2], el.value);
+      else l[r[2]] = valorDe(el);
       guardar(); return renderPronto();
     }
     if ((a = el.getAttribute('data-a'))) {
@@ -741,9 +842,9 @@
       if (col === 'reservas') S.catalogo.reservas = val2;
       else {
         var obj = col === 'nec' ? S.catalogo.nec[Number(s[1])] : S.catalogo[col].filter(function (x) { return String(x.id) === s[1]; })[0];
+        if (col === 'cables' && s[2] === 'calibre') val2 = Calc.normalizarCalibre(val2);
         if (obj) setPorRuta(obj, s[2], val2);
       }
-      opcionesCables._cache = null;
       guardarCatalogo(); return renderPronto();
     }
     if ((a = el.getAttribute('data-filtro'))) {
@@ -889,7 +990,7 @@
       case 'cat-restablecer':
         confirmar('Restablecer catálogo', 'Se reemplazará el catálogo actual por el catálogo base del Excel. Los cambios hechos en Administración se perderán (exporte primero si los necesita).', true).then(function (ok) {
           if (!ok) return;
-          Store.restablecerCatalogo().then(function (c) { S.catalogo = c; opcionesCables._cache = null; render(); toast('Catálogo restablecido'); });
+          Store.restablecerCatalogo().then(function (c) { S.catalogo = c; render(); toast('Catálogo restablecido'); });
         });
         break;
       case 'admin-pin': return pedirPin(true);
@@ -909,12 +1010,11 @@
       var mm = { id: uid('m'), nombre: 'Nueva marca', acabados: [''], claros: [], largoPieza: 3, nota: '' };
       cat.marcas.push(mm);
     } else if (col === 'cables') {
-      cat.cables.unshift({ id: uid('cb'), nombre: 'Nuevo cable', fabricante: S.adminFiltro.fab || (cat.fabricantesCable[0] || {}).id || '', peso: '', diam: '', clase: S.adminFiltro.clase || 'MC < 4/0' });
+      cat.cables.unshift({ id: uid('cb'), nombre: 'Nuevo cable', fabricante: S.adminFiltro.fab || (cat.fabricantesCable[0] || {}).id || '', material: 'Cu', conductores: 3, calibre: '', hilos: '', aislamiento: '', articulo: '', peso: '', diam: '', clase: S.adminFiltro.clase || 'MC < 4/0' });
       S.adminFiltro.texto = '';
     } else if (col === 'fabricantesCable') cat.fabricantesCable.push({ id: uid('f'), nombre: 'Nuevo fabricante' });
     else if (col === 'tiposCanasta') cat.tiposCanasta.push({ id: uid('tc'), nombre: 'NUEVO TIPO', baseNec: 'ventilada' });
     else if (col === 'nec') cat.nec.push({ anchoMm: '', anchoIn: '', col1: '', col3: '' });
-    opcionesCables._cache = null;
     guardarCatalogo(); render();
   }
 
@@ -941,7 +1041,6 @@
       if (!ok) return;
       if (col === 'nec') cat.nec.splice(Number(id), 1);
       else cat[col] = cat[col].filter(function (x) { return x.id !== id; });
-      opcionesCables._cache = null;
       guardarCatalogo(); render();
     });
   }
@@ -985,7 +1084,7 @@
       var data = JSON.parse(txt);
       if (modoArchivo === 'catalogo') {
         if (!data.canastas || !data.cables || !data.marcas) throw new Error('No es un catálogo válido');
-        S.catalogo = data; opcionesCables._cache = null;
+        S.catalogo = data;
         return Store.saveCatalogo(data).then(function () { render(); toast('Catálogo importado'); });
       }
       if (!data.niveles || !data.parametros) throw new Error('No es un proyecto válido');
@@ -995,6 +1094,7 @@
   });
 
   function abrirProyecto(p, guardarlo) {
+    if (p.parametros && p.parametros.fabricanteCable === undefined) p.parametros.fabricanteCable = marcaCablePorUso(p);
     S.proyecto = p;
     S.filtroTramo = {};
     if (S.vista.indexOf('nivel:') === 0) S.vista = 'proyecto';
@@ -1072,6 +1172,14 @@
   /* ================= Inicio ================= */
   function migrarCatalogo(cat) {
     cat.marcas.forEach(function (m) { if (!m.largoPieza) m.largoPieza = 3; });
+    // Catálogos guardados antes de separar material / conductores / calibre: se deducen del nombre
+    cat.cables.forEach(function (c) {
+      if (c.material && c.calibre && c.conductores) return;
+      var a = Calc.atributosCable(c);
+      ['material', 'conductores', 'calibre', 'hilos', 'aislamiento', 'articulo'].forEach(function (k) {
+        if (c[k] === undefined || c[k] === '' || c[k] === null) c[k] = a[k] === null ? '' : a[k];
+      });
+    });
     return cat;
   }
   /* La versión inicial creaba automáticamente un proyecto de ejemplo (922c · oficina Sinergia).
