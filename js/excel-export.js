@@ -576,7 +576,7 @@
       var cab = cabPorId[l.cable];
       put(ws, 'C' + rr, n + 1, con(E.sal, { font: { size: 9, color: { argb: C.gris } } }));
       put(ws, 'D' + rr, l.tramo && numT[l.tramo] ? numT[l.tramo] : null, E.ent);
-      ws.getCell('D' + rr).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, X.nT], showErrorMessage: true, errorTitle: 'Tramo no válido', error: 'Escriba un número de tramo entre 1 y ' + X.nT + '.' };
+      ws.getCell('D' + rr).dataValidation = { type: 'list', allowBlank: true, formulae: ['$C$' + t0 + ':$C$' + tE], showInputMessage: true, promptTitle: 'Tramo', prompt: 'Elija el # de tramo de la tabla superior; su nombre aparece en «Sección (auto)».', showErrorMessage: true, errorTitle: 'Tramo no válido', error: 'Elija un número de tramo de la lista (1 a ' + X.nT + ').' };
       put(ws, 'E' + rr, '=IF(' + a('D') + '="","",IFERROR(IF(INDEX(' + TDn + ',' + a('D') + ')="","(sin nombre)",INDEX(' + TDn + ',' + a('D') + ')&""),""))', con(E.sal, { font: { size: 8, color: { argb: C.gris } } }));
       put(ws, 'F' + rr, cab ? cab.nombre : null, E.ent); ws.mergeCells('F' + rr + ':I' + rr); lista(ws, 'F' + rr, 'LISTA_CABLES', 'Elija un cable del catálogo.');
       put(ws, 'J' + rr, numVal(l.cant), E.ent);
