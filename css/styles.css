@@ -157,6 +157,10 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 .field input[readonly] { background: var(--line-2); border-color: var(--line); }
 
+/* Texto de ejemplo en los campos vacíos: tenue, desaparece al escribir */
+::placeholder { color: #9aa3ad; opacity: 1; font-style: italic; }
+select:invalid { color: #9aa3ad; }
+
 /* Tablas */
 .tbl-wrap { overflow-x: auto; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }

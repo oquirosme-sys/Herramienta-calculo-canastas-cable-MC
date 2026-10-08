@@ -69,6 +69,12 @@
     if (estilo) Object.keys(estilo).forEach(function (k) { c[k] = estilo[k]; });
     return c;
   }
+  /* Nota emergente de ejemplo en una celda de entrada vacía (no escribe nada en la celda, así el ejemplo no entra a los cálculos) */
+  function ejemplo(ws, celda, titulo, texto, numerica) {
+    ws.getCell(celda).dataValidation = numerica
+      ? { type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showInputMessage: true, promptTitle: titulo, prompt: texto, showErrorMessage: false }
+      : { type: 'textLength', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showInputMessage: true, promptTitle: titulo, prompt: texto, showErrorMessage: false };
+  }
   function lista(ws, celda, formula, error) {
     ws.getCell(celda).dataValidation = {
       type: 'list', allowBlank: true, formulae: [formula], showErrorMessage: true,
@@ -327,7 +333,10 @@
     put(wsP, 'D5', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado', E.sub);
     put(wsP, 'D7', 'Datos del proyecto / Project data', E.seccion);
     [['Proyecto # / Project #', P.numero], ['Nombre / Name', P.nombre], ['Ubicación / Location', P.ubicacion], ['Fecha / Date', P.fecha], ['Elaboró / Prepared by', P.elaboro]]
-      .forEach(function (x, i) { put(wsP, 'D' + (8 + i), x[0], E.lbl); put(wsP, 'F' + (8 + i), x[1] || null, E.ent); });
+      .forEach(function (x, i) {
+        put(wsP, 'D' + (8 + i), x[0], E.lbl); put(wsP, 'F' + (8 + i), x[1] || null, E.ent);
+        ejemplo(wsP, 'F' + (8 + i), x[0], ['ej. 922c', 'ej. Oficinas Sinergia', 'ej. Escazú, San José', 'ej. 2026-10-07', 'ej. Nombre del responsable'][i]);
+      });
     put(wsP, 'D14', 'Parámetros de cálculo / Design parameters', E.seccion);
     put(wsP, 'D15', 'Parámetro', E.hdr); put(wsP, 'F15', 'Valor', E.hdr); put(wsP, 'G15', 'Descripción / criterio', E.hdr);
     var pv = function (k, def) { var v = numVal(par[k]); return v === null ? def : v; };
@@ -591,7 +600,7 @@
 
     put(ws, 'E3', 'Memoria de cálculo — canalizaciones portacables (cable MC)', E.titulo);
     put(ws, 'E4', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado', E.sub);
-    put(ws, 'D8', 'Nivel / Level', E.lbl); put(ws, 'F8', nivel.nombre || null, E.ent); ws.mergeCells('F8:I8');
+    put(ws, 'D8', 'Nivel / Level', E.lbl); put(ws, 'F8', nivel.nombre || null, E.ent); ws.mergeCells('F8:I8'); ejemplo(ws, 'F8', 'Nivel', 'ej. N02, S1, AZOTEA');
     put(ws, 'D9', 'Proyecto / Project', E.lbl); put(ws, 'F9', '=TRIM(Proyecto!F8&" "&Proyecto!F9)'); ws.mergeCells('F9:L9');
     put(ws, 'D10', 'Ubicación / Location', E.lbl); put(ws, 'F10', '=Proyecto!F10&""'); ws.mergeCells('F10:L10');
     put(ws, 'D13', 'Tramos de canalización del nivel / Cable tray segments', E.seccion);
@@ -623,7 +632,7 @@
       var can = ctx.canPorId[t.canasta];
       var serieT = ctx.seriePorId[t.serie];
       put(ws, 'C' + r, i + 1, con(E.sal, { alignment: { horizontal: 'center' } }));
-      put(ws, 'D' + r, t.nombre || null, E.ent);
+      put(ws, 'D' + r, t.nombre || null, E.ent); ejemplo(ws, 'D' + r, 'Sección o tramo', 'ej. Bandeja principal');
       put(ws, 'E' + r, serieT ? ctx.nombreLinea(serieT) : null, con(E.ent, { font: { size: 9 } })); lista(ws, 'E' + r, 'LIN_NOMBRE');
       put(ws, 'F' + r, t.tipo ? ctx.tipoNombre(t.tipo) : null, E.ent); lista(ws, 'F' + r, 'LISTA_TIPO');
       put(ws, 'G' + r, numVal(t.claro), con(E.ent, { numFmt: '0.00' })); lista(ws, 'G' + r, 'LISTA_CLAROS');
@@ -647,7 +656,7 @@
         'IF(AND(' + $('AZ') + '<>0,' + $('AZ') + '<>2,' + $('N') + '=""),IF(' + $('AZ') + '=4,"⚠ faltan dimensiones del ducto","⚠ sin dato NEC para el ancho de la canasta"),IF(AND(ISNUMBER(' + $('O') + '),N(' + $('O') + ')>PRY_RESERVA),"⚠ supera la reserva de diseño",' +
         'IF(AND(' + $('AZ') + '=4,N(' + $('AS') + ')>PRY_DUCTO_MAX),"⚠ > "&PRY_DUCTO_MAX&" conductores portadores: aplique ajuste 310.15(C)(1)",' +
         'IF(AND(ISNUMBER(' + $('S') + '),ISNUMBER(' + $('BF') + '),N(' + $('S') + ')>N(' + $('BF') + ')),"⚠ ocupación bruta > fabricante","✔ CUMPLE")))))))', E.sal);
-      put(ws, 'V' + r, numVal(t.distancia), con(E.ent, { numFmt: '#,##0.0' }));
+      put(ws, 'V' + r, numVal(t.distancia), con(E.ent, { numFmt: '#,##0.0' })); ejemplo(ws, 'V' + r, 'Distancia del tramo (m)', 'ej. 25', true);
       put(ws, 'W' + r, '=IF(OR(' + $('L') + '="",LEFT(' + $('L') + ',1)="❌"),"",INDEX(CAN_REF,MATCH(' + $('L') + ',CAN_NOMBRE,0)))', con(E.sal, { font: { size: 9 } }));
       put(ws, 'X' + r, '=IF(' + $('BE') + '="","",INDEX(CAN_REF,' + $('BE') + '))', con(E.sal, { font: { size: 9 } }));
       // auxiliares
@@ -704,7 +713,7 @@
       ws.getCell('D' + rr).dataValidation = { type: 'list', allowBlank: true, formulae: ['$C$' + t0 + ':$C$' + tE], showInputMessage: true, promptTitle: 'Tramo', prompt: 'Elija el # de tramo de la tabla superior; su nombre aparece en «Sección (auto)».', showErrorMessage: true, errorTitle: 'Tramo no válido', error: 'Elija un número de tramo de la lista (1 a ' + X.nT + ').' };
       put(ws, 'E' + rr, '=IF(' + a('D') + '="","",IFERROR(IF(INDEX(' + TDn + ',' + a('D') + ')="","(sin nombre)",INDEX(' + TDn + ',' + a('D') + ')&""),""))', con(E.sal, { font: { size: 8, color: { argb: C.gris } } }));
       put(ws, 'F' + rr, cab ? cab.nombre : null, E.ent); ws.mergeCells('F' + rr + ':I' + rr); lista(ws, 'F' + rr, 'LISTA_CABLES', 'Elija un cable del catálogo.');
-      put(ws, 'J' + rr, numVal(l.cant), E.ent);
+      put(ws, 'J' + rr, numVal(l.cant), E.ent); ejemplo(ws, 'J' + rr, 'Cantidad', 'ej. 12', true);
       put(ws, 'K' + rr, '=IF(' + a('F') + '="","",IFERROR(VLOOKUP(' + a('F') + ',TABLA_CABLES,4,FALSE),""))', con(E.sal, { numFmt: '0.00' }));
       put(ws, 'L' + rr, '=IF(' + a('K') + '="","",PI()*(' + a('K') + '/2)^2)', con(E.sal, { numFmt: '#,##0.0' }));
       put(ws, 'M' + rr, '=IF(' + a('F') + '="","",IFERROR(VLOOKUP(' + a('F') + ',TABLA_CABLES,5,FALSE),"OTRO - REVISAR"))', E.sal);

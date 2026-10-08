@@ -339,10 +339,10 @@
 
     h.push('<div class="card"><div class="card-h"><h2>Datos del proyecto</h2></div><div class="card-b"><div class="grid-form">');
     h.push(campo('Proyecto # / Project #', txt('numero', p.numero, 'ej. 922c')));
-    h.push(campo('Nombre / Name', txt('nombre', p.nombre, 'Nombre del proyecto')));
-    h.push(campo('Ubicación / Location', txt('ubicacion', p.ubicacion, 'Ciudad / provincia')));
+    h.push(campo('Nombre / Name', txt('nombre', p.nombre, 'ej. Oficinas Sinergia')));
+    h.push(campo('Ubicación / Location', txt('ubicacion', p.ubicacion, 'ej. Escazú, San José')));
     h.push(campo('Fecha / Date', txt('fecha', p.fecha, '', 'date')));
-    h.push(campo('Elaboró / Prepared by', txt('elaboro', p.elaboro, 'Nombre del responsable')));
+    h.push(campo('Elaboró / Prepared by', txt('elaboro', p.elaboro, 'ej. Nombre del responsable')));
     h.push('</div></div></div>');
 
     h.push('<div class="card"><div class="card-h"><h2>Parámetros de cálculo</h2><span class="sub">Aplican a todo el edificio; cada tramo puede cambiar tipo y claro.</span></div><div class="card-b"><div class="grid-form">');
@@ -375,7 +375,7 @@
       var r = nv.resumen, n = nv.nivel;
       var est = r.errores ? chip(r.errores + ' error(es)', 'error') : r.advertencias ? chip(r.advertencias + ' advertencia(s)', 'warn') : r.tramos ? chip('OK', 'ok') : chip('sin cables', 'pend');
       h.push('<div class="nivel-row"><span class="num-badge">' + (i + 1) + '</span>' +
-        '<input class="in" data-nv="' + n.id + '|nombre" value="' + esc(n.nombre) + '" placeholder="Nombre del nivel (ej. N02, S1, AZOTEA)">' +
+        '<input class="in" data-nv="' + n.id + '|nombre" value="' + esc(n.nombre) + '" placeholder="ej. N02, S1, AZOTEA">' +
         '<span class="info">' + n.tramos.length + ' tramos · ' + r.cables + ' cables · ' + fmt(r.longitud, 1) + ' m ' + est + '</span>' +
         '<span class="acts">' +
         '<button class="btn-icon" data-act="nivel-subir" data-id="' + n.id + '" title="Subir"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
@@ -386,7 +386,7 @@
         '</span></div>');
     });
     h.push('</div>');
-    h.push('<div class="add-row"><input class="in" id="nuevoNivelNombre" placeholder="Nombre del nuevo nivel">' +
+    h.push('<div class="add-row"><input class="in" id="nuevoNivelNombre" placeholder="ej. Nivel 1">' +
       '<button class="btn btn-primary" data-act="nivel-agregar">＋ Agregar nivel</button>' +
       '<span class="sub" style="color:var(--ink-3)">o generar en serie:</span>' +
       '<input class="in" id="serPrefijo" value="Nivel " style="width:90px">' +
@@ -448,9 +448,9 @@
         : (t.recomendadaTexto ? '<span class="t-err">' + esc(t.recomendadaTexto) + '</span>' : '');
       var filtrado = S.filtroTramo[nivel.id] === tr.id;
       h.push('<tr' + (filtrado ? ' class="sel"' : '') + '><td><span class="num-badge">' + (i + 1) + '</span></td>' +
-        '<td><input class="cell w-l" data-t="' + k + 'nombre" value="' + esc(tr.nombre) + '" placeholder="Tramo ' + (i + 1) + '"></td>' +
+        '<td><input class="cell w-l" data-t="' + k + 'nombre" value="' + esc(tr.nombre) + '" placeholder="ej. Bandeja principal"></td>' +
         '<td>' + serieSel + '</td><td>' + tipoSel + '</td><td>' + claroSel + '</td>' +
-        '<td><input class="cell w-xs" data-t="' + k + 'distancia" data-type="num" value="' + esc(tr.distancia) + '"></td>' +
+        '<td><input class="cell w-xs" data-t="' + k + 'distancia" data-type="num" value="' + esc(tr.distancia) + '" placeholder="ej. 25"></td>' +
         '<td>' + canSel + '</td><td>' + reco + '</td>' +
         '<td class="n"><a href="#" data-act="filtrar-tramo" data-nivel="' + nivel.id + '" data-id="' + tr.id + '" title="Ver cables de este tramo">' + t.cables + '</a></td>' +
         '<td class="n">' + (t.cables && !ducto ? fmt(t.areaMenor, 1) : '') + '</td>' +
@@ -497,7 +497,7 @@
       h.push('<tr><td class="muted">' + (i + 1) + '</td>' +
         '<td><select class="cell w-m" data-l="' + k + 'tramo">' + tramoOpts(l.tramo) + '</select></td>' +
         celdasCable(l, k) +
-        '<td><input class="cell w-xs" data-l="' + k + 'cant" data-type="num" value="' + esc(l.cant) + '"></td>' +
+        '<td><input class="cell w-xs" data-l="' + k + 'cant" data-type="num" value="' + esc(l.cant) + '" placeholder="ej. 12"></td>' +
         '<td class="n">' + (d ? fmt(d.diam, 2) : '') + '</td>' +
         '<td class="n">' + (d ? fmt(d.areaUnit, 1) : '') + '</td>' +
         '<td class="muted">' + (d ? esc(d.clase) : '') + '</td>' +
