@@ -342,7 +342,9 @@
     var pv = function (k, def) { var v = numVal(par[k]); return v === null ? def : v; };
     var params = [
       ['Reserva de diseño — % máx. del área NEC permitida a utilizar', numVal(par.reserva), '0%', 'LISTA_RESERVA',
-        '=IF(F16>=1,"100 % — sin reserva: se usa el límite completo del área NEC.","Se acepta hasta "&TEXT(F16,"0%")&" del área permitida por NEC (reserva de "&TEXT(1-F16,"0%")&" para crecimiento futuro).")', 'PRY_RESERVA'],
+        '=IF(F16>=1,"100 % — sin reserva: se usa el límite completo del área NEC.","Criterio Sinergia: preseleccionado 40 %. Se acepta hasta "&TEXT(F16,"0%")&" del área permitida por NEC (reserva de "&TEXT(1-F16,"0%")&" para crecimiento futuro).")', 'PRY_RESERVA'],
+      ['Alerta de llenado NEC (% del área permitida)', pv('alertaLlenado', 0.5), '0%', null,
+        'Criterio Sinergia: 50 %. Entre la reserva y este valor el tramo queda en amarillo; sobre la alerta, en naranja (⚠); desde 100 %, ❌. Solo aplica si es mayor que la reserva.', 'PRY_ALERTA'],
       ['Canalización por defecto (marca · tipo)', nombreLinea(serieDef), null, 'LIN_NOMBRE', 'Cada tramo puede usar otra línea (columna «Canalización»). Canasta y escalera: NEC 392.22; ducto cuadrado: NEC 376.22.', 'PRY_LINEA'],
       ['Claro entre soportes por defecto (ft)', numVal(par.claro), '0.00', 'LISTA_CLAROS', 'Si la línea del tramo no tiene este claro, se usa su primer claro. Cada tramo puede usar otro.', 'PRY_CLARO'],
       ['Tipo de canasta por defecto', tipoNombre(par.tipo), null, 'LISTA_TIPO', 'Escalera / ventilada usa Col. 1-2 y 30·Sd; fondo sólido usa Col. 3-4 y 25·Sd. No aplica al ducto cuadrado.', 'PRY_TIPO'],
@@ -405,7 +407,8 @@
     var crit = [
       ['Área NEC 392.22(A)', '="(b) Cables < 4/0: Σ áreas ≤ Col. 1 (escalera / ventilada, (A)(1)) o Col. 3 (fondo sólido, (A)(3)). (c) Mezcla con ≥ 4/0: Σ áreas < 4/0 ≤ Col. 2 − "&PRY_SD_V&"·Sd o Col. 4 − "&PRY_SD_S&"·Sd. (a) Solo ≥ 4/0: una capa, Σ diámetros ≤ ancho (fondo sólido: ≤ 90 % del ancho)."'],
       ['Ducto cuadrado — NEC 376.22', '="Σ áreas de todos los cables ≤ "&TEXT(PRY_DUCTO,"0%")&" de la sección interior del ducto. Más de "&PRY_DUCTO_MAX&" conductores portadores: factores de ajuste 310.15(C)(1)."'],
-      ['Reserva de diseño', '=TEXT(PRY_RESERVA,"0%")&" del área permitida por NEC como máximo ("&IF(PRY_RESERVA>=1,"sin reserva","reserva de "&TEXT(1-PRY_RESERVA,"0%"))&")"'],
+      ['Reserva de diseño', '=TEXT(PRY_RESERVA,"0%")&" del área permitida por NEC como máximo ("&IF(PRY_RESERVA>=1,"sin reserva","reserva de "&TEXT(1-PRY_RESERVA,"0%"))&"). Criterio Sinergia: 40 % preseleccionado."'],
+      ['Alerta de llenado NEC', '=TEXT(PRY_ALERTA,"0%")&" del área permitida por NEC (criterio Sinergia: 50 %). Entre la reserva y la alerta el tramo queda en amarillo; sobre la alerta, en naranja (⚠); desde 100 %, ❌ NO CUMPLE."'],
       ['Carga / claro', 'Carga real de los cables (lb/ft) ≤ carga máxima admisible del fabricante para el claro entre soportes del tramo (según la línea de producto).'],
       ['Ocupación bruta', '="Área de todos los cables ÷ área interior útil (ancho real × min(alto, "&PRY_ALTMAX&" mm); ducto: sección completa). Referencia del fabricante; NO es el cumplimiento NEC."'],
       ['Canalización / tipo / claro por defecto', '=PRY_LINEA&" · "&PRY_TIPO&" · "&FIXED(PRY_CLARO,2)&" ft · acabado "&PRY_ACABADO'],
@@ -521,7 +524,8 @@
       semaforo(wsD, 'N7:N' + (rd - 1), '$N7');
       wsD.addConditionalFormatting({ ref: 'K7:K' + (rd - 1), rules: [
         { type: 'expression', priority: 10, formulae: ['AND(ISNUMBER($K7),$K7>1)'], style: dxf('error') },
-        { type: 'expression', priority: 11, formulae: ['AND(ISNUMBER($K7),$K7>PRY_RESERVA)'], style: dxf('warn') }] });
+        { type: 'expression', priority: 11, formulae: ['AND(ISNUMBER($K7),PRY_ALERTA>PRY_RESERVA,$K7>PRY_ALERTA)'], style: dxf('warn') },
+        { type: 'expression', priority: 12, formulae: ['AND(ISNUMBER($K7),$K7>PRY_RESERVA)'], style: dxf('alerta') }] });
     }
 
     /* ---------- AYUDA ---------- */
@@ -533,7 +537,7 @@
       ['C', 'TRAMOS — tabla superior (hasta ' + X.nT + ' tramos): nombre, canalización (canasta, escalera o ducto cuadrado de cada marca), tipo, claro, tamaño seleccionado y distancia. Celdas VERDES = entrada manual.'],
       ['D', 'CABLES — lista inferior (hasta ' + X.nC + ' líneas): # de tramo (lista desplegable), cable y cantidad. Un tramo suma todas las líneas que tengan su número.'],
       ['E', 'TAMAÑO RECOMENDADO — el de menor sección de la línea del tramo que cumple el área NEC (con la reserva de diseño) y la carga máx. por claro.'],
-      ['F', '% LLENADO NEC — canasta/escalera: Σ áreas < 4/0 ÷ área permitida 392.22 (o Σ diámetros ÷ ancho si todos son ≥ 4/0). Ducto: Σ áreas de todos los cables ÷ (20 % de la sección), NEC 376.22.'],
+      ['F', '% LLENADO NEC — canasta/escalera: Σ áreas < 4/0 ÷ área permitida 392.22 (o Σ diámetros ÷ ancho si todos son ≥ 4/0). Ducto: Σ áreas de todos los cables ÷ (20 % de la sección), NEC 376.22. Colores: amarillo > reserva (Sinergia 40 %), naranja > alerta (Sinergia 50 %), rojo > 100 %.'],
       ['G', '% CARGA — peso real de los cables (lb/ft) ÷ carga máxima admisible para el claro del tramo. Rojo si excede 100 %.'],
       ['H', '% OCUPACIÓN BRUTA — área de todos los cables ÷ área interior útil (ancho × min(alto, 150 mm); ducto: sección completa). Solo referencia del fabricante; naranja si supera su factor de llenado.'],
       ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho o peso/claro) · ⚠ advertencia (reserva de diseño, > 30 conductores portadores en ducto u ocupación bruta > fabricante) · ✔ CUMPLE.'],
@@ -653,9 +657,9 @@
       var fAncho = 'OR(AND(' + $('AZ') + '=2,' + $('J') + '>INDEX(CAN_ANCHO,' + $('BE') + ')*IF(' + $('BA') + '=1,1,0.9)),AND(' + $('AZ') + '=3,' + $('J') + '>INDEX(CAN_ANCHO,' + $('BE') + ')))';
       var fPeso = 'AND(ISNUMBER(' + $('R') + '),N(' + $('R') + ')>1)';
       put(ws, 'T' + r, '=IF(' + $('H') + '=0,"",IF(' + $('BE') + '="","— seleccione tamaño",IF(OR(' + fArea + ',' + fAncho + ',' + fPeso + '),"❌ NO CUMPLE —"&IF(' + fArea + ',IF(' + $('AZ') + '=4," área NEC 376.22"," área NEC"),"")&IF(' + fAncho + '," ancho","")&IF(' + fPeso + '," peso/claro",""),' +
-        'IF(AND(' + $('AZ') + '<>0,' + $('AZ') + '<>2,' + $('N') + '=""),IF(' + $('AZ') + '=4,"⚠ faltan dimensiones del ducto","⚠ sin dato NEC para el ancho de la canasta"),IF(AND(ISNUMBER(' + $('O') + '),N(' + $('O') + ')>PRY_RESERVA),"⚠ supera la reserva de diseño",' +
+        'IF(AND(' + $('AZ') + '<>0,' + $('AZ') + '<>2,' + $('N') + '=""),IF(' + $('AZ') + '=4,"⚠ faltan dimensiones del ducto","⚠ sin dato NEC para el ancho de la canasta"),IF(AND(ISNUMBER(' + $('O') + '),PRY_ALERTA>PRY_RESERVA,N(' + $('O') + ')>PRY_ALERTA),"⚠ alerta: llenado NEC > "&TEXT(PRY_ALERTA*100,"0")&" %",IF(AND(ISNUMBER(' + $('O') + '),N(' + $('O') + ')>PRY_RESERVA),"⚠ supera la reserva de diseño ("&TEXT(PRY_RESERVA*100,"0")&" %)",' +
         'IF(AND(' + $('AZ') + '=4,N(' + $('AS') + ')>PRY_DUCTO_MAX),"⚠ > "&PRY_DUCTO_MAX&" conductores portadores: aplique ajuste 310.15(C)(1)",' +
-        'IF(AND(ISNUMBER(' + $('S') + '),ISNUMBER(' + $('BF') + '),N(' + $('S') + ')>N(' + $('BF') + ')),"⚠ ocupación bruta > fabricante","✔ CUMPLE")))))))', E.sal);
+        'IF(AND(ISNUMBER(' + $('S') + '),ISNUMBER(' + $('BF') + '),N(' + $('S') + ')>N(' + $('BF') + ')),"⚠ ocupación bruta > fabricante","✔ CUMPLE"))))))))', E.sal);
       put(ws, 'V' + r, numVal(t.distancia), con(E.ent, { numFmt: '#,##0.0' })); ejemplo(ws, 'V' + r, 'Distancia del tramo (m)', 'ej. 25', true);
       put(ws, 'W' + r, '=IF(OR(' + $('L') + '="",LEFT(' + $('L') + ',1)="❌"),"",INDEX(CAN_REF,MATCH(' + $('L') + ',CAN_NOMBRE,0)))', con(E.sal, { font: { size: 9 } }));
       put(ws, 'X' + r, '=IF(' + $('BE') + '="","",INDEX(CAN_REF,' + $('BE') + '))', con(E.sal, { font: { size: 9 } }));
@@ -687,12 +691,13 @@
     ws.addConditionalFormatting({ ref: 'L' + t0 + ':L' + tE, rules: [{ type: 'expression', priority: 4, formulae: ['LEFT($L' + t0 + ',1)="❌"'], style: dxf('error') }] });
     ws.addConditionalFormatting({ ref: 'O' + t0 + ':O' + tE, rules: [
       { type: 'expression', priority: 5, formulae: ['AND(ISNUMBER($O' + t0 + '),$O' + t0 + '>1)'], style: dxf('error') },
-      { type: 'expression', priority: 6, formulae: ['AND(ISNUMBER($O' + t0 + '),$O' + t0 + '>PRY_RESERVA)'], style: dxf('warn') },
-      { type: 'expression', priority: 7, formulae: ['ISNUMBER($O' + t0 + ')'], style: dxf('ok') }] });
+      { type: 'expression', priority: 6, formulae: ['AND(ISNUMBER($O' + t0 + '),PRY_ALERTA>PRY_RESERVA,$O' + t0 + '>PRY_ALERTA)'], style: dxf('warn') },
+      { type: 'expression', priority: 7, formulae: ['AND(ISNUMBER($O' + t0 + '),$O' + t0 + '>PRY_RESERVA)'], style: dxf('alerta') },
+      { type: 'expression', priority: 8, formulae: ['ISNUMBER($O' + t0 + ')'], style: dxf('ok') }] });
     ws.addConditionalFormatting({ ref: 'R' + t0 + ':R' + tE, rules: [
-      { type: 'expression', priority: 8, formulae: ['AND(ISNUMBER($R' + t0 + '),$R' + t0 + '>1)'], style: dxf('error') }] });
+      { type: 'expression', priority: 20, formulae: ['AND(ISNUMBER($R' + t0 + '),$R' + t0 + '>1)'], style: dxf('error') }] });
     ws.addConditionalFormatting({ ref: 'S' + t0 + ':S' + tE, rules: [
-      { type: 'expression', priority: 9, formulae: ['AND(ISNUMBER($S' + t0 + '),ISNUMBER($BF' + t0 + '),$S' + t0 + '>$BF' + t0 + ')'], style: dxf('warn') }] });
+      { type: 'expression', priority: 21, formulae: ['AND(ISNUMBER($S' + t0 + '),ISNUMBER($BF' + t0 + '),$S' + t0 + '>$BF' + t0 + ')'], style: dxf('warn') }] });
     put(ws, 'D' + (tE + 1), '* Recomendado: el de menor sección de la línea del tramo que cumple el área NEC con la reserva de diseño (392.22 o 376.22; fondo sólido con todos ≥ 4/0: Σ diámetros ≤ 90 % del ancho) y la carga máx. del fabricante para el claro. + Ocupación bruta: área de todos los cables ÷ área interior útil; solo referencia del fabricante.', E.nota);
     ws.mergeCells('D' + (tE + 1) + ':X' + (tE + 1)); ws.getRow(tE + 1).height = 24;
 

@@ -188,6 +188,10 @@
     r.claro = claroEfectivo(serie, tramo, p);
     r.idxClaro = indiceClaro(serie, r.claro);
     var reserva = num(p.reserva);
+    // Alerta de llenado NEC: solo aplica si es mayor que la reserva de diseño
+    var alertaNum = num(p.alertaLlenado);
+    var alertaEf = alertaNum !== null && alertaNum > reserva ? alertaNum : null;
+    r.alertaEf = alertaEf;
     var altoMax = par(p, 'altoMax', 150);
 
     // Recomendada: la primera (menor sección) de la línea que cumple NEC con reserva + ancho + carga por claro
@@ -253,8 +257,10 @@
           r.estado = 'error';
         } else if (sinNec) {
           r.veredicto = ducto ? '⚠ faltan dimensiones del ducto' : '⚠ sin dato NEC para el ancho de la canasta'; r.estado = 'warn';
+        } else if (r.pctNec !== null && alertaEf !== null && r.pctNec > alertaEf) {
+          r.veredicto = '⚠ alerta: llenado NEC > ' + Math.round(alertaEf * 100) + ' %'; r.estado = 'warn';
         } else if (r.pctNec !== null && r.pctNec > reserva) {
-          r.veredicto = '⚠ supera la reserva de diseño'; r.estado = 'warn';
+          r.veredicto = '⚠ supera la reserva de diseño (' + Math.round(reserva * 100) + ' %)'; r.estado = 'warn';
         } else if (ducto && r.portadores > par(p, 'ductoMaxConductores', 30)) {
           r.veredicto = '⚠ > ' + par(p, 'ductoMaxConductores', 30) + ' conductores portadores: aplique ajuste 310.15(C)(1)'; r.estado = 'warn';
         } else if (r.estadoBruta === 'warn') {

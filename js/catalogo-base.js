@@ -2,13 +2,13 @@
  * Es la semilla inicial: el administrador puede editarlo desde la pestaña Administración.
  * En la fase 2 estas listas pasan a tablas de Supabase. */
 window.CATALOGO_BASE = {
-  version: 2,
+  version: 3,
   actualizado: "2026-10-06",
   tiposCanasta: [
     {"id": "ventilada", "nombre": "ESCALERA / VENTILADA", "baseNec": "ventilada"},
     {"id": "solido", "nombre": "FONDO SÓLIDO", "baseNec": "solido"}
   ],
-  reservas: [1, 0.9, 0.8, 0.7, 0.6, 0.5],
+  reservas: [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3],
   fabricantesCable: [
     {"id": "viakon", "nombre": "Viakon"},
     {"id": "condumex", "nombre": "Condumex"}

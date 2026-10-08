@@ -28,6 +28,19 @@ Nació del libro `Canasta_MC_V2_1.xlsx` y conserva sus fórmulas para canastas.
 
 Ducto cuadrado, 376.22: Σ áreas ≤ 20 % de la sección; más de 30 conductores portadores → factores de ajuste de 310.15(C)(1). No se verifican los casos de solo control/señal (392.22(A)(2) y (A)(4)), la ampacidad (392.80(A)), los soportes (392.30 / 376.30) ni las curvas. El resumen de los artículos y la Tabla 392.22(A) están en la pestaña Ayuda.
 
+## Criterio de llenado de Sinergia
+
+Sobre el **% de llenado NEC** (área de cables ÷ área permitida por la norma):
+
+| Llenado NEC | Color | Resultado |
+|---|---|---|
+| Hasta la reserva de diseño (**40 % preseleccionado**) | Verde | ✔ Cumple |
+| Entre la reserva y la alerta | Amarillo | ⚠ Supera la reserva de diseño |
+| Sobre la alerta (**50 %**) | Naranja | ⚠ Alerta: llenado NEC > 50 % |
+| Desde 100 % | Rojo | ❌ No cumple |
+
+Ambos valores se ajustan en la pestaña Proyecto (la alerta solo aplica si es mayor que la reserva). El tamaño recomendado respeta la reserva. El ejemplo del Excel original se carga con reserva de 70 % para reproducir sus resultados.
+
 ## Catálogo de canalizaciones
 
 | Marca | Línea | Fuente |

@@ -46,9 +46,12 @@
     if (!texto) return '';
     return '<span class="chip ' + (estado || estadoDe(texto)) + '">' + esc(texto) + '</span>';
   }
-  function pctCell(v, warnLim, errLim) {
+  /* Semáforo del % de llenado: > errLim rojo · > alertLim naranja (alerta) · > warnLim amarillo (supera lo preseleccionado) */
+  function pctCell(v, warnLim, errLim, alertLim) {
     if (v === null || v === undefined) return '';
-    var cls = errLim !== null && v > errLim ? 'error' : (warnLim !== null && v > warnLim ? 'warn' : '');
+    var cls = errLim !== null && v > errLim ? 'error'
+      : (alertLim !== null && alertLim !== undefined && alertLim > warnLim && v > alertLim ? 'warn'
+        : (warnLim !== null && v > warnLim ? 'alerta' : ''));
     var w = Math.max(0, Math.min(100, v * 100));
     return '<div class="pct ' + cls + '"><span>' + fmtPct(v) + '</span><div class="bar"><i style="width:' + w + '%"></i></div></div>';
   }
@@ -134,7 +137,7 @@
     return Object.assign({
       id: uid('p'), numero: '', nombre: '', ubicacion: '', fecha: '', elaboro: '',
       parametros: {
-        reserva: 0.7, claro: serie.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
+        reserva: 0.4, alertaLlenado: 0.5, claro: serie.claros[0] || '', tipo: (cat.tiposCanasta[0] || {}).id || '', altoMax: 150,
         sdVentilada: 30, sdSolido: 25, serie: serie.id, acabado: serie.acabados[0] || '',
         fabricanteCable: (cat.fabricantesCable[0] || {}).id || '',
         ductoFactor: 0.20, ductoMaxConductores: 30
@@ -149,7 +152,7 @@
       var s = S.catalogo.series.filter(function (x) { return x.marca === par.marca && x.sistema === 'canasta'; })[0] || S.catalogo.series[0] || VACIA;
       par.serie = s.id;
     }
-    var def = { ductoFactor: 0.20, ductoMaxConductores: 30 };
+    var def = { ductoFactor: 0.20, ductoMaxConductores: 30, alertaLlenado: 0.5 };
     Object.keys(def).forEach(function (k) { if (par[k] === undefined || par[k] === '') par[k] = def[k]; });
     if (par.fabricanteCable === undefined) par.fabricanteCable = marcaCablePorUso(p);
     return p;
@@ -208,6 +211,7 @@
     var cat = S.catalogo;
     var porNombre = function (lista, nombre) { return (lista.filter(function (x) { return x.nombre === nombre; })[0] || {}).id || ''; };
     var p = nuevoProyecto({ numero: '922c', nombre: 'Ejemplo — oficina Sinergia', ubicacion: 'Escazú', fecha: new Date().toISOString().slice(0, 10) });
+    p.parametros.reserva = 0.7;   // el ejemplo reproduce la pestaña N01 del Excel original (reserva 70 %)
     var n = nuevoNivel('Nivel 1');
     p.niveles = [n];
     var t1 = { id: uid('t'), nombre: 'Ejemplo 1 — bandeja principal', tipo: 'ventilada', claro: 4.9, canasta: porNombre(cat.canastas, '4x18 (CF 105/450)'), distancia: 50 };
@@ -332,7 +336,7 @@
     };
     var reservaTxt = par.reserva >= 1
       ? '100 % — sin reserva: se usa el límite completo de NEC 392.22(A).'
-      : 'Se acepta hasta ' + fmt(par.reserva * 100, 0) + ' % del área permitida por NEC (reserva de ' + fmt((1 - par.reserva) * 100, 0) + ' % para crecimiento futuro).';
+      : 'Criterio Sinergia: preseleccionado 40 %. Se acepta hasta ' + fmt(par.reserva * 100, 0) + ' % del área permitida por NEC (reserva de ' + fmt((1 - par.reserva) * 100, 0) + ' % para crecimiento futuro).';
 
     var h = [];
     h.push('<div class="page-h"><div><h1>Proyecto</h1><div class="meta">Datos generales, parámetros de cálculo y niveles del edificio. Las celdas verdes son de entrada.</div></div></div>');
@@ -348,6 +352,8 @@
     h.push('<div class="card"><div class="card-h"><h2>Parámetros de cálculo</h2><span class="sub">Aplican a todo el edificio; cada tramo puede cambiar tipo y claro.</span></div><div class="card-b"><div class="grid-form">');
     h.push(campo('Reserva de diseño (% máx. del área NEC)',
       '<select data-bind="par.reserva" data-type="num">' + cat.reservas.map(function (r) { return opt(r, fmt(r * 100, 0) + ' %', Number(par.reserva) === r); }).join('') + '</select>', reservaTxt));
+    h.push(campo('Alerta de llenado NEC (%)', '<input data-bind="par.alertaLlenado" data-type="pct" value="' + esc(fmt(par.alertaLlenado * 100, 0)) + '">',
+      'Criterio Sinergia: 50 %. Entre la reserva y este valor: amarillo (supera lo preseleccionado); arriba: naranja (alerta). Rojo desde 100 %. Solo aplica si es mayor que la reserva.'));
     h.push(campo('Canalización por defecto (marca · tipo)',
       '<select data-bind="par.serie">' + opcionesSeries(par.serie) + '</select>', esc(serie.nota || 'Cada tramo puede usar otra canalización (canasta, escalera o ducto cuadrado).')));
     h.push(campo('Acabado / Finish',
@@ -457,7 +463,7 @@
         '<td class="n">' + (t.cables && !ducto ? fmt(t.sd, 2) : '') + '</td>' +
         '<td class="muted">' + esc(t.casoTexto) + '</td>' +
         '<td class="n">' + (t.areaPermitida === 'n/a' ? 'n/a' : fmt(t.areaPermitida, 1)) + '</td>' +
-        '<td class="n">' + pctCell(t.pctNec, Number(par.reserva), 1) + '</td>' +
+        '<td class="n">' + pctCell(t.pctNec, Number(par.reserva), 1, Number(par.alertaLlenado)) + '</td>' +
         '<td class="n">' + (t.cables ? fmt(t.peso, 2) : '') + '</td>' +
         '<td class="n">' + fmt(t.cargaMax, 2) + '</td>' +
         '<td class="n">' + pctCell(t.pctCarga, null, 1) + '</td>' +
@@ -573,7 +579,8 @@
       fila('Proyecto # / Project #', esc(p.numero)) + fila('Nombre / Name', esc(p.nombre)) + fila('Ubicación / Location', esc(p.ubicacion)) +
       fila('Fecha / Date', esc(p.fecha)) + fila('Elaboró / Prepared by', esc(p.elaboro)) +
       fila('Área NEC 392.22(A)', '(b) Cables &lt; 4/0: Σ áreas ≤ Col. 1 (escalera / ventilada, (A)(1)) o Col. 3 (fondo sólido, (A)(3)). (c) Mezcla con ≥ 4/0: Σ áreas &lt; 4/0 ≤ Col. 2 − ' + esc(par.sdVentilada) + '·Sd o Col. 4 − ' + esc(par.sdSolido) + '·Sd. (a) Solo ≥ 4/0: una capa, Σ diámetros ≤ ancho (fondo sólido: ≤ 90 % del ancho).') +
-      fila('Reserva de diseño', fmt(par.reserva * 100, 0) + ' % del área permitida por NEC como máximo (' + (par.reserva >= 1 ? 'sin reserva' : 'reserva de ' + fmt((1 - par.reserva) * 100, 0) + ' %') + ')') +
+      fila('Reserva de diseño', fmt(par.reserva * 100, 0) + ' % del área permitida por NEC como máximo (' + (par.reserva >= 1 ? 'sin reserva' : 'reserva de ' + fmt((1 - par.reserva) * 100, 0) + ' %') + '). Criterio Sinergia: 40 % preseleccionado.') +
+      fila('Alerta de llenado NEC', fmt(par.alertaLlenado * 100, 0) + ' % del área permitida por NEC (criterio Sinergia: 50 %). Entre la reserva y la alerta el tramo queda en amarillo; sobre la alerta, en naranja (⚠); desde 100 %, ❌ NO CUMPLE.') +
       fila('Ducto cuadrado — NEC 376.22', 'Σ áreas de todos los cables ≤ ' + pc(par.ductoFactor) + ' de la sección interior del ducto. Con más de ' + esc(par.ductoMaxConductores) + ' conductores portadores de corriente se aplican los factores de ajuste de 310.15(C)(1).') +
       fila('Carga / claro', 'Carga real de los cables (lb/ft) ≤ carga máxima admisible del fabricante para el claro entre soportes del tramo (según la línea de producto).') +
       fila('Ocupación bruta', 'Área de todos los cables ÷ área interior útil (canasta/escalera: ancho real × min(alto, ' + esc(par.altoMax) + ' mm); ducto: sección completa). Referencia del fabricante (factor de llenado); NO es el cumplimiento NEC.') +
@@ -590,7 +597,7 @@
       var r = nv.resumen;
       h.push('<tr><td>' + (i + 1) + '</td><td><a href="#" data-vista="nivel:' + nv.nivel.id + '">' + esc(nv.nivel.nombre) + '</a></td><td class="n">' + r.tramos + '</td><td class="n">' + r.cables + '</td>' +
         '<td class="n ' + (r.errores ? 't-err' : '') + '">' + r.errores + '</td><td class="n ' + (r.advertencias ? 't-warn' : '') + '">' + r.advertencias + '</td>' +
-        '<td class="n">' + fmt(r.longitud, 1) + '</td><td class="n">' + pctCell(r.maxNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(r.maxCarga, null, 1) + '</td><td class="n">' + fmtPct(r.maxReal) + '</td></tr>');
+        '<td class="n">' + fmt(r.longitud, 1) + '</td><td class="n">' + pctCell(r.maxNec, Number(par.reserva), 1, Number(par.alertaLlenado)) + '</td><td class="n">' + pctCell(r.maxCarga, null, 1) + '</td><td class="n">' + fmtPct(r.maxReal) + '</td></tr>');
     });
     h.push('</tbody><tfoot><tr><td></td><td>TOTAL EDIFICIO</td><td class="n">' + t.tramos + '</td><td class="n">' + t.cables + '</td><td class="n">' + t.errores + '</td><td class="n">' + t.advertencias + '</td><td class="n">' + fmt(t.longitud, 1) +
       '</td><td class="n">' + fmtPct(t.maxNec) + '</td><td class="n">' + fmtPct(t.maxCarga) + '</td><td class="n">' + fmtPct(t.maxReal) + '</td></tr></tfoot></table></div></div></section>');
@@ -628,7 +635,7 @@
       var x = d.r;
       h.push('<tr><td>' + esc(d.nivel.nombre) + '</td><td>' + d.num + '</td><td>' + esc(x.tramo.nombre || '(sin nombre)') + '</td><td>' + esc(marcaDe(x.serie.marca).nombre + ' · ' + (Calc.SISTEMAS[x.sistema] || '')) + '</td><td class="muted">' + esc(x.tipoNombre) + '</td>' +
         '<td class="n">' + x.cables + '</td><td class="n">' + fmt(x.areaTotal, 1) + '</td><td>' + esc(x.seleccionada ? x.seleccionada.nombre : 'Sin selección') + '</td><td>' + esc(x.refSeleccionada) + '</td>' +
-        '<td class="n">' + pctCell(x.pctNec, Number(par.reserva), 1) + '</td><td class="n">' + pctCell(x.pctCarga, null, 1) + '</td><td class="n">' + pctBruta(x.pctBruta, x.estadoBruta) + '</td><td>' + chip(x.veredicto, x.estado) + '</td><td class="n">' + fmt(x.tramo.distancia, 1) + '</td></tr>');
+        '<td class="n">' + pctCell(x.pctNec, Number(par.reserva), 1, Number(par.alertaLlenado)) + '</td><td class="n">' + pctCell(x.pctCarga, null, 1) + '</td><td class="n">' + pctBruta(x.pctBruta, x.estadoBruta) + '</td><td>' + chip(x.veredicto, x.estado) + '</td><td class="n">' + fmt(x.tramo.distancia, 1) + '</td></tr>');
     });
     h.push('</tbody></table></div></div></section>');
     h.push('</div>');
@@ -643,10 +650,10 @@
       ['C', 'TRAMOS — tabla superior de cada nivel: nombre del tramo, canalización (canasta, escalera o ducto cuadrado de Cablofil, Eaton o Schneider), tipo, claro, distancia y tamaño seleccionado. Celdas VERDES = entrada manual. Deje canalización/tipo/claro en «(defecto)» para usar los del proyecto.'],
       ['D', 'CABLES — lista inferior: tramo, cable (un solo desplegable con la descripción del catálogo, de la marca de cable del proyecto, agrupado por material y # de conductores) y cantidad. Un tramo suma todas las líneas asignadas.'],
       ['E', 'TAMAÑO RECOMENDADO — el de menor sección de la línea del tramo que cumple el área NEC (con la reserva de diseño) y la carga máx. por claro. Con «usar» lo copia al seleccionado.'],
-      ['F', '% LLENADO NEC — canasta y escalera (NEC 392.22(A)): Σ áreas < 4/0 ÷ área permitida (Col. 1/3, o Col. 2/4 − 30·Sd / 25·Sd con mezcla); solo cables ≥ 4/0: Σ diámetros ÷ ancho (fondo sólido: 90 % del ancho). Ducto cuadrado (NEC 376.22): Σ áreas de todos los cables ÷ 20 % de la sección. Naranja > reserva, rojo > 100 %.'],
+      ['F', '% LLENADO NEC — canasta y escalera (NEC 392.22(A)): Σ áreas < 4/0 ÷ área permitida (Col. 1/3, o Col. 2/4 − 30·Sd / 25·Sd con mezcla); solo cables ≥ 4/0: Σ diámetros ÷ ancho (fondo sólido: 90 % del ancho). Ducto cuadrado (NEC 376.22): Σ áreas de todos los cables ÷ 20 % de la sección. Amarillo > reserva de diseño (Sinergia: 40 % preseleccionado), naranja > alerta (Sinergia: 50 %), rojo > 100 %.'],
       ['G', '% CARGA — peso real de los cables (lb/ft) ÷ carga máxima admisible para el claro del tramo. Rojo si excede 100 %. Carga 0 en el catálogo = claro no publicado por el fabricante (no permitido).'],
       ['H', '% OCUPACIÓN BRUTA — área de todos los cables ÷ área interior útil (ancho × min(alto, 150 mm); ducto: sección completa). Solo referencia del fabricante (factor 0,5 / 0,6 / 0,7 en canastas Cablofil); naranja si lo supera.'],
-      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho o peso/claro) · ⚠ advertencia (supera la reserva de diseño, más de 30 conductores portadores en ducto u ocupación bruta > fabricante) · ✔ CUMPLE.'],
+      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho o peso/claro) · ⚠ advertencia (supera la reserva de diseño o la alerta de llenado, más de 30 conductores portadores en ducto u ocupación bruta > fabricante) · ✔ CUMPLE.'],
       ['J', 'MEMORIA DE CÁLCULO — consolida niveles, errores, longitudes, metros y piezas por tamaño (canasta, escalera y ducto), cables por tipo y el detalle de cada tramo. Se imprime con el formato Sinergia (membrete, carta) o se descarga en Excel.'],
       ['K', 'LIMITACIONES — no se calcula la ampacidad (NEC 392.80(A)), soportes (392.30 / 376.30) ni curvas. Los tramos con solo cables de control/señal (392.22(A)(2) y (A)(4)) no se verifican. Vea el resumen de la norma más abajo y verifique contra la edición vigente.'],
       ['L', 'CATÁLOGOS — marcas, líneas de producto (claros y acabados), tamaños, cables, fabricantes, tipos de canasta y tabla NEC se administran en la pestaña Administración (solo con permisos de administrador).'],
@@ -1257,6 +1264,10 @@
 
   /* ================= Inicio ================= */
   function migrarCatalogo(cat) {
+    // Reservas de diseño: se agregan 40 % (criterio Sinergia) y 30 % si el catálogo guardado no las tiene
+    cat.reservas = cat.reservas || [];
+    [0.4, 0.3].forEach(function (r) { if (cat.reservas.indexOf(r) < 0) cat.reservas.push(r); });
+    cat.reservas.sort(function (a, b) { return b - a; });
     // Catálogos anteriores a las líneas de producto: cada marca pasa a ser su línea de «canasta»
     if (!cat.series) {
       cat.series = cat.marcas.map(function (m) {

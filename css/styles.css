@@ -203,7 +203,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pct { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .pct .bar { width: 46px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
 .pct .bar i { display: block; height: 100%; background: var(--ok); }
-.pct.warn .bar i { background: #e0a100; }
+.pct.alerta .bar i { background: #f2d024; }
+.pct.alerta span { color: #8a6d00; font-weight: 600; }
+.pct.warn .bar i { background: #f08c00; }
 .pct.error .bar i { background: var(--err); }
 .pct.warn span { color: var(--warn); font-weight: 600; }
 .pct.error span { color: var(--err); font-weight: 600; }
