@@ -120,7 +120,7 @@
     if (!linea.tramo) return { aviso: '❌ asigne el tramo', nivel: 'error' };
     if (tramosIds.indexOf(linea.tramo) < 0) return { aviso: '❌ tramo inválido', nivel: 'error' };
     var cable = cx.cables[linea.cable];
-    if (!linea.cable) return { aviso: '❌ complete material, conductores y calibre', nivel: 'error' };
+    if (!linea.cable) return { aviso: '❌ elija el cable', nivel: 'error' };
     if (!cable) return { aviso: '❌ cable no está en el catálogo', nivel: 'error' };
     if (num(linea.cant) === null) return { aviso: '⚠ falta cantidad', nivel: 'warn' };
     if ([CLASE_MENOR, CLASE_MAYOR, CLASE_CONTROL].indexOf(cable.clase) < 0) return { aviso: '⚠ clase no reconocida', nivel: 'warn' };

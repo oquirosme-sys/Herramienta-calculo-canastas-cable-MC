@@ -13,7 +13,7 @@ Nació del libro `Canasta_MC_V2_1.xlsx` y conserva sus fórmulas para canastas.
 | Pestaña | Contenido |
 |---|---|
 | **Proyecto** | Datos del proyecto, parámetros (reserva, canalización por defecto, acabado, marca de cable, tipo y claro, factores Sd, criterios del ducto) y **niveles del edificio**. Cada nivel crea su propia pestaña. |
-| **Nivel (una por nivel)** | Tramos (canalización, tipo, claro, distancia, tamaño seleccionado y recomendado, % NEC, % carga, % ocupación bruta, veredicto) y cables por tramo, elegidos por material, # de conductores, calibre e hilos. |
+| **Nivel (una por nivel)** | Tramos (canalización, tipo, claro, distancia, tamaño seleccionado y recomendado, % NEC, % carga, % ocupación bruta, veredicto) y cables por tramo (un desplegable con la descripción del catálogo, de la marca de cable del proyecto). |
 | **Memoria de cálculo** | Resumen por nivel, canalizaciones por tamaño (metros y piezas), cables por tipo y detalle de cada tramo. Se imprime con el formato Sinergia (membrete, hoja carta) y se descarga en **Excel (.xlsx) con fórmulas vivas** o CSV. |
 | **Ayuda** | Instrucciones y resumen de la norma: NEC 392.22(A) (casos (a), (b) y (c) para escalera/fondo ventilado y fondo sólido, con la Tabla 392.22(A) completa), 392.80(A)(1) y 376.22. |
 | **Administración** | Solo con PIN de administrador: marcas, líneas de producto, tamaños (dimensiones y cargas por claro), cables, fabricantes, tipos de canasta, reservas y tabla NEC. |
