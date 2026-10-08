@@ -318,14 +318,9 @@ dialog p { margin: 0 0 10px; color: var(--ink-2); line-height: 1.45; }
   .pct span { font-weight: 400; }
 }
 
-/* Criterio de llenado real (TIA-569 / BICSI · Sinergia) */
-.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
-.sw.ok { background: #57d07a; }
-.sw.alerta { background: #f2d024; }
-.sw.warn { background: #f08c00; }
-.sw.error { background: #e03131; }
-.reco-box { margin-top: 14px; background: #fff8db; border: 1px solid #f0d27a; border-radius: var(--radius); padding: 12px 16px; font-size: 13px; line-height: 1.55; color: #5c4400; }
-.reco-box ul { margin: 6px 0 0; padding-left: 4px; list-style: none; }
-.pct.alerta .bar i { background: #f2d024; }
-.pct.alerta span { color: #8a6d00; font-weight: 600; }
-.chip.alerta { background: #fff8db; color: #8a6d00; }
+/* Ayuda — resumen de la norma */
+.norma { margin: 0 0 16px; }
+.norma h3 { font-size: 14px; color: var(--app); margin: 0 0 6px; }
+.norma ul { margin: 0; padding-left: 18px; line-height: 1.55; color: var(--ink-2); }
+.norma li { margin-bottom: 4px; }
+.norma-tabla { font-size: 14px; color: var(--app); margin: 18px 0 8px; }

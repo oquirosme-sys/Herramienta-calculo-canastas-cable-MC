@@ -1,7 +1,7 @@
 /* Motor de cálculo — basado en las fórmulas de las pestañas de nivel (N01) de Canasta_MC_V2_1.xlsx.
  * Canasta y escalera: NEC 2020 Art. 392.22(A) (área permitida / suma de diámetros) y carga por claro.
  * Ducto cuadrado (wireway): NEC 2020 Art. 376.22 (≤ 20 % de la sección; > 30 conductores portadores → ajuste).
- * Llenado real (área de cables ÷ área interior útil): TIA-569 / BICSI (máx. 50 %) y criterio Sinergia (40 %).
+ * Ocupación bruta (área de cables ÷ área interior útil): referencia del fabricante, no es el cumplimiento NEC.
  * Funciones puras: no tocan el DOM ni el almacenamiento. */
 (function (global) {
   'use strict';
@@ -10,11 +10,15 @@
   var CLASE_MAYOR = 'MC >= 4/0';
   var CLASE_CONTROL = 'CONTROL/SEÑAL';
 
-  var CASOS = ['solo control/señal', '(A)(1) · todos < 4/0', '(A)(1)(a) · todos ≥ 4/0', '(A)(1)(b) · mezcla', '376.22 · ≤ 20 % de la sección'];
+  /* Casos de NEC 392.22(A): (1) escalera / fondo ventilado, (3) fondo sólido; (a) todos ≥ 4/0, (b) todos < 4/0, (c) mezcla */
+  function textoCaso(caso, ventilada) {
+    var art = ventilada ? '(A)(1)' : '(A)(3)';
+    return ['solo control/señal', art + '(b) · todos < 4/0', art + '(a) · todos ≥ 4/0', art + '(c) · mezcla', '376.22 · ≤ 20 % de la sección'][caso];
+  }
+  /* 392.22(A)(1)(a): Σ diámetros ≤ ancho de la bandeja; (A)(3)(a) fondo sólido: ≤ 90 % del ancho */
+  function anchoPermitido(canasta, ventilada) { return num(canasta.anchoReal) * (ventilada ? 1 : 0.9); }
   var SISTEMAS = { canasta: 'Canasta', escalera: 'Escalera', ducto: 'Ducto cuadrado' };
 
-  /* Valores por defecto de los criterios de llenado real */
-  var LLENADO = { alerta: 0.30, sinergia: 0.40, maximo: 0.50 };
 
   function indexar(lista) {
     var m = {};
@@ -102,20 +106,11 @@
     return num((canasta.cargas || [])[idxClaro]);
   }
 
-  /* Área útil para el llenado real: ancho real × min(alto real, altura máx. de cómputo); el ducto usa su sección completa */
+  /* Área útil para la ocupación bruta: ancho real × min(alto real, altura máx. de cómputo); el ducto usa su sección completa */
   function areaUtil(c, sistema, altoMax) {
     var a = num(c.anchoReal), h = num(c.altoReal);
     if (a === null || h === null) return null;
     return a * (sistema === 'ducto' ? h : Math.min(h, altoMax));
-  }
-
-  /* Estado del llenado real: ok < alerta ≤ «alerta» < sinergia ≤ «warn» < máximo < «error» */
-  function estadoLlenado(v, p) {
-    if (v === null || v === undefined) return '';
-    if (v > par(p, 'llenadoMax', LLENADO.maximo)) return 'error';
-    if (v > par(p, 'llenadoSinergia', LLENADO.sinergia)) return 'warn';
-    if (v >= par(p, 'llenadoAlerta', LLENADO.alerta)) return 'alerta';
-    return 'ok';
   }
 
   /* Validación de una línea de cable (columna Q del Excel) */
@@ -182,12 +177,12 @@
     if (r.cables === 0) r.caso = 0;
     else if (ducto) r.caso = 4;
     else r.caso = r.nMenor === 0 && r.nMayor === 0 ? 0 : (r.nMayor === 0 ? 1 : (r.nMenor === 0 ? 2 : 3));
-    r.casoTexto = r.cables === 0 ? '' : CASOS[r.caso];
 
     var tipoId = tramo.tipo || p.tipo;
     var tipo = cx.tipos[tipoId];
     r.tipoNombre = ducto ? SISTEMAS.ducto : (tipo ? tipo.nombre : '');
     r.ventilada = !tipo || tipo.baseNec !== 'solido';
+    r.casoTexto = r.cables === 0 ? '' : textoCaso(r.caso, r.ventilada);
     r.factorSd = r.ventilada ? num(p.sdVentilada) : num(p.sdSolido);
     r.factorDucto = par(p, 'ductoFactor', 0.20);
     r.claro = claroEfectivo(serie, tramo, p);
@@ -209,13 +204,10 @@
           var ap = areaPermitida(cx, c, r.caso, r.ventilada, r.factorSd, r.sd);
           okArea = ap !== null && r.areaMenor <= reserva * ap;
         }
-        var okAncho = ducto || r.caso === 1 || r.sd <= num(c.anchoReal);
+        var okAncho = ducto || r.caso === 1 || r.sd <= (r.caso === 2 ? anchoPermitido(c, r.ventilada) : num(c.anchoReal));
         var cm = cargaMax(c, r.idxClaro);
         var okCarga = cm === null ? true : r.peso <= cm;
-        // Además, el llenado real no debe superar el criterio Sinergia de prellenado
-        var au = areaUtil(c, r.sistema, altoMax);
-        var okReal = au !== null && au > 0 && r.areaTotal / au <= par(p, 'llenadoSinergia', LLENADO.sinergia);
-        if (okArea && okAncho && okCarga && okReal) { r.recomendada = c; break; }
+        if (okArea && okAncho && okCarga) { r.recomendada = c; break; }
       }
       r.recomendadaTexto = r.recomendada ? r.recomendada.nombre : '❌ ninguna cumple — divida el tramo';
     } else {
@@ -228,10 +220,11 @@
     r.seleccionada = sel || null;
     r.refSeleccionada = sel ? referencia(cx, sel, p) : '';
     r.areaPermitida = null; r.pctNec = null; r.cargaMax = null; r.pctCarga = null; r.pctBruta = null; r.estadoBruta = '';
+    r.factorFab = sel ? num(sel.factor) : null;
 
     if (sel && r.caso !== 0) {
       r.areaPermitida = areaPermitida(cx, sel, r.caso, r.ventilada, r.factorSd, r.sd, r.factorDucto);
-      if (r.caso === 2) r.pctNec = r.sd / num(sel.anchoReal);
+      if (r.caso === 2) r.pctNec = r.sd / anchoPermitido(sel, r.ventilada);
       else if (r.areaPermitida === null) r.pctNec = null;
       else if (ducto) r.pctNec = r.areaPermitida > 0 ? r.areaTotal / r.areaPermitida : 9.99;
       else r.pctNec = r.areaPermitida <= 0 ? 9.99 : r.areaMenor / r.areaPermitida;
@@ -243,7 +236,7 @@
       r.pctCarga = r.cargaMax === null ? null : (r.cargaMax > 0 ? r.peso / r.cargaMax : 9.99);
       r.areaBruta = areaUtil(sel, r.sistema, altoMax);
       r.pctBruta = r.areaBruta > 0 ? r.areaTotal / r.areaBruta : null;
-      r.estadoBruta = estadoLlenado(r.pctBruta, p);
+      r.estadoBruta = r.pctBruta !== null && r.factorFab !== null && r.pctBruta > r.factorFab ? 'warn' : '';
     }
 
     // Veredicto (columna T)
@@ -252,22 +245,20 @@
       if (!sel) { r.veredicto = '— seleccione tamaño'; r.estado = 'pend'; }
       else {
         var fallaArea = r.caso !== 0 && r.caso !== 2 && r.pctNec !== null && r.pctNec > 1;
-        var fallaAncho = (r.caso === 2 || r.caso === 3) && r.sd > num(sel.anchoReal);
+        var fallaAncho = (r.caso === 2 && r.sd > anchoPermitido(sel, r.ventilada)) || (r.caso === 3 && r.sd > num(sel.anchoReal));
         var fallaPeso = r.pctCarga !== null && r.pctCarga > 1;
-        var fallaReal = r.estadoBruta === 'error';
         var sinNec = r.caso !== 0 && r.caso !== 2 && r.areaPermitida === null;
-        if (fallaArea || fallaAncho || fallaPeso || fallaReal) {
-          r.veredicto = '❌ NO CUMPLE —' + (fallaArea ? (ducto ? ' área NEC 376.22' : ' área NEC') : '') + (fallaAncho ? ' ancho' : '') +
-            (fallaPeso ? ' peso/claro' : '') + (fallaReal ? ' llenado real > ' + Math.round(par(p, 'llenadoMax', LLENADO.maximo) * 100) + ' % (TIA-569)' : '');
+        if (fallaArea || fallaAncho || fallaPeso) {
+          r.veredicto = '❌ NO CUMPLE —' + (fallaArea ? (ducto ? ' área NEC 376.22' : ' área NEC') : '') + (fallaAncho ? ' ancho' : '') + (fallaPeso ? ' peso/claro' : '');
           r.estado = 'error';
         } else if (sinNec) {
           r.veredicto = ducto ? '⚠ faltan dimensiones del ducto' : '⚠ sin dato NEC para el ancho de la canasta'; r.estado = 'warn';
         } else if (r.pctNec !== null && r.pctNec > reserva) {
           r.veredicto = '⚠ supera la reserva de diseño'; r.estado = 'warn';
-        } else if (r.estadoBruta === 'warn') {
-          r.veredicto = '⚠ llenado real > ' + Math.round(par(p, 'llenadoSinergia', LLENADO.sinergia) * 100) + ' % (criterio Sinergia)'; r.estado = 'warn';
         } else if (ducto && r.portadores > par(p, 'ductoMaxConductores', 30)) {
           r.veredicto = '⚠ > ' + par(p, 'ductoMaxConductores', 30) + ' conductores portadores: aplique ajuste 310.15(C)(1)'; r.estado = 'warn';
+        } else if (r.estadoBruta === 'warn') {
+          r.veredicto = '⚠ ocupación bruta > fabricante'; r.estado = 'warn';
         } else {
           r.veredicto = '✔ CUMPLE'; r.estado = 'ok';
         }
@@ -408,8 +399,6 @@
     textoHilos: textoHilos,
     CLASES: [CLASE_MENOR, CLASE_MAYOR, CLASE_CONTROL],
     SISTEMAS: SISTEMAS,
-    LLENADO: LLENADO,
-    estadoLlenado: estadoLlenado,
     prepararCatalogo: prepararCatalogo,
     canastasDeSerie: canastasDeSerie,
     serieEfectiva: serieEfectiva,

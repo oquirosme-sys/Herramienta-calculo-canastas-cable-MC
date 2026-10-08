@@ -1,7 +1,7 @@
 /* Exportación a Excel (.xlsx) con fórmulas vivas — misma lógica que calc.js.
  * Hojas: AYUDA · Proyecto · Resumen · Detalle · INICIO_NIVELES · una por nivel · FIN_NIVELES · NEC 392.22
  *        y catálogos ocultos (Canastas, Lineas, Cables, Listas).
- * Canasta y escalera: NEC 392.22(A). Ducto cuadrado: NEC 376.22. Llenado real: TIA-569 / BICSI · Sinergia.
+ * Canasta y escalera: NEC 392.22(A). Ducto cuadrado: NEC 376.22. Ocupación bruta: referencia del fabricante.
  * Todas las hojas de nivel tienen la misma estructura, así los totales del Resumen usan referencias 3D
  * (INICIO_NIVELES:FIN_NIVELES) y un nivel copiado dentro de Excel también se suma.
  * Usa ExcelJS, que se carga desde cdnjs solo al exportar. */
@@ -90,18 +90,6 @@
         { type: 'expression', priority: 1, formulae: ['LEFT(' + primera + ',1)="❌"'], style: dxf('error') },
         { type: 'expression', priority: 2, formulae: ['LEFT(' + primera + ',1)="⚠"'], style: dxf('warn') },
         { type: 'expression', priority: 3, formulae: ['LEFT(' + primera + ',1)="✔"'], style: dxf('ok') }
-      ]
-    });
-  }
-  /* Semáforo del llenado real: > máximo (rojo) · > Sinergia (naranja) · ≥ alerta (amarillo) · resto (verde) */
-  function semaforoReal(ws, rango, primera, prio) {
-    ws.addConditionalFormatting({
-      ref: rango,
-      rules: [
-        { type: 'expression', priority: prio, formulae: ['AND(ISNUMBER(' + primera + '),' + primera + '>PRY_LL_MAX)'], style: dxf('error') },
-        { type: 'expression', priority: prio + 1, formulae: ['AND(ISNUMBER(' + primera + '),' + primera + '>PRY_LL_SINERGIA)'], style: dxf('warn') },
-        { type: 'expression', priority: prio + 2, formulae: ['AND(ISNUMBER(' + primera + '),' + primera + '>=PRY_LL_ALERTA)'], style: dxf('alerta') },
-        { type: 'expression', priority: prio + 3, formulae: ['ISNUMBER(' + primera + ')'], style: dxf('ok') }
       ]
     });
   }
@@ -293,13 +281,13 @@
     ].forEach(function (t, i) { put(wsNec, 'B' + (necFin + 2 + i), t, { font: { size: 10 } }); });
 
     /* ---------- Canastas (todos los tamaños de todas las líneas) ---------- */
-    var cCarga0 = 14, cC1 = cCarga0 + nCl, cC2 = cC1 + 1, cC3 = cC1 + 2, cC4 = cC1 + 3, cFam = cC1 + 4, cCod = cC1 + 5, cRef = cC1 + 6;
+    var cCarga0 = 14, cC1 = cCarga0 + nCl, cC2 = cC1 + 1, cC3 = cC1 + 2, cC4 = cC1 + 3, cFam = cC1 + 4, cCod = cC1 + 5, cRef = cC1 + 6, cFac = cC1 + 7;
     put(wsCan, 'B2', 'CATÁLOGO DE TAMAÑOS — canasta, escalera y ducto cuadrado, en orden de recomendación por línea', E.seccion);
     put(wsCan, 'B3', 'Las cargas (lb/ft) corresponden, en orden, a los claros de su línea (hoja Lineas). Referencia = código base + acabado.', E.nota);
     ['Tamaño', 'Ancho nom. (mm)', 'Alto nom. (mm)', 'Ancho real (mm)', 'Alto / prof. útil (mm)', 'Línea', 'Sistema', 'Alto de cómputo (mm)', 'Área útil (mm²)', 'Sección interior (mm²)', 'Largo de pieza (m)', 'Marca']
       .forEach(function (h, i) { put(wsCan, L(2 + i) + '5', h, E.hdr); });
     for (var q = 0; q < nCl; q++) put(wsCan, L(cCarga0 + q) + '5', 'Carga claro ' + (q + 1) + ' (lb/ft)', E.hdr);
-    [[cC1, 'NEC Col.1 escalera (mm²)'], [cC2, 'NEC Col.2 base escalera (mm²)'], [cC3, 'NEC Col.3 sólido (mm²)'], [cC4, 'NEC Col.4 base sólido (mm²)'], [cFam, 'Familia'], [cCod, 'Código base fabricante'], [cRef, 'Referencia completa (con acabado)']]
+    [[cC1, 'NEC Col.1 escalera (mm²)'], [cC2, 'NEC Col.2 base escalera (mm²)'], [cC3, 'NEC Col.3 sólido (mm²)'], [cC4, 'NEC Col.4 base sólido (mm²)'], [cFam, 'Familia'], [cCod, 'Código base fabricante'], [cRef, 'Referencia completa (con acabado)'], [cFac, 'Factor llenado fabricante']]
       .forEach(function (h) { put(wsCan, L(h[0]) + '5', h[1], E.hdr); });
     wsCan.getRow(5).height = 40;
     var VL = function (r, col) { return 'VLOOKUP($G' + r + ',TABLA_LINEAS,' + col + ',FALSE)'; };
@@ -320,6 +308,7 @@
       put(wsCan, L(cC3) + r, '=IFERROR(VLOOKUP($C' + r + ',' + NEC + ',5,FALSE),"")');
       put(wsCan, L(cC4) + r, '=IFERROR(VLOOKUP($C' + r + ',' + NEC + ',6,FALSE),"")');
       put(wsCan, L(cFam) + r, c.familia || ''); put(wsCan, L(cCod) + r, c.codigo || '');
+      put(wsCan, L(cFac) + r, numVal(c.factor));
       put(wsCan, L(cRef) + r, '=' + L(cCod) + r + '&IFERROR(IF(ISNUMBER(SEARCH(","&PRY_ACABADO&",",","&' + VL(r, cLinAcabs - 1) + '&",")),PRY_ACABADO,' + VL(r, cLinAcab1 - 1) + '),"")');
     });
     wsCan.getColumn(2).width = 26; wsCan.getColumn(7).width = 40;
@@ -329,13 +318,13 @@
     dn.add(rngCan(10), 'CAN_BRUTA'); dn.add(rngCan(11), 'CAN_SECCION'); dn.add(rngCan(12), 'CAN_LARGO'); dn.add(rngCan(13), 'CAN_MARCA'); dn.add(rngCan(8), 'CAN_SISTEMA');
     dn.add('Canastas!$' + L(cCarga0) + '$6:$' + L(cCarga0 + nCl - 1) + '$' + canFin, 'CAN_CARGAS');
     dn.add(rngCan(cC1), 'CAN_C1'); dn.add(rngCan(cC2), 'CAN_C2'); dn.add(rngCan(cC3), 'CAN_C3'); dn.add(rngCan(cC4), 'CAN_C4');
-    dn.add(rngCan(cRef), 'CAN_REF');
+    dn.add(rngCan(cRef), 'CAN_REF'); dn.add(rngCan(cFac), 'CAN_FACTOR');
 
     /* ---------- Proyecto ---------- */
     [2, 3].forEach(function (k) { wsP.getColumn(k).width = 2; });
     wsP.getColumn(4).width = 46; wsP.getColumn(5).width = 2; wsP.getColumn(6).width = 40; wsP.getColumn(7).width = 90;
     put(wsP, 'D4', 'Memoria de cálculo — canalizaciones portacables (cable MC)', E.titulo);
-    put(wsP, 'D5', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado · TIA-569 / BICSI llenado real', E.sub);
+    put(wsP, 'D5', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado', E.sub);
     put(wsP, 'D7', 'Datos del proyecto / Project data', E.seccion);
     [['Proyecto # / Project #', P.numero], ['Nombre / Name', P.nombre], ['Ubicación / Location', P.ubicacion], ['Fecha / Date', P.fecha], ['Elaboró / Prepared by', P.elaboro]]
       .forEach(function (x, i) { put(wsP, 'D' + (8 + i), x[0], E.lbl); put(wsP, 'F' + (8 + i), x[1] || null, E.ent); });
@@ -349,14 +338,11 @@
       ['Claro entre soportes por defecto (ft)', numVal(par.claro), '0.00', 'LISTA_CLAROS', 'Si la línea del tramo no tiene este claro, se usa su primer claro. Cada tramo puede usar otro.', 'PRY_CLARO'],
       ['Tipo de canasta por defecto', tipoNombre(par.tipo), null, 'LISTA_TIPO', 'Escalera / ventilada usa Col. 1-2 y 30·Sd; fondo sólido usa Col. 3-4 y 25·Sd. No aplica al ducto cuadrado.', 'PRY_TIPO'],
       ['Acabado / Finish', par.acabado || '', null, 'LISTA_ACABADO', 'Se agrega a la referencia del fabricante (ej. CF54/200EZ). En líneas sin este acabado se usa su acabado por defecto.', 'PRY_ACABADO'],
-      ['Altura máxima de cómputo (mm)', pv('altoMax', 150), '0', null, 'NEC 392.22(A): máx. 150 mm (6 in). Afecta el llenado real de canastas y escaleras.', 'PRY_ALTMAX'],
+      ['Altura máxima de cómputo (mm)', pv('altoMax', 150), '0', null, 'NEC 392.22(A): máx. 150 mm (6 in). Solo afecta el % de ocupación bruta (referencia).', 'PRY_ALTMAX'],
       ['Factor Sd — escalera / ventilada (× Σ diámetros ≥ 4/0)', numVal(par.sdVentilada), '0', null, 'NEC 392.22(A)(1)(b): área permitida = Columna 2 base − 30·Sd.', 'PRY_SD_V'],
       ['Factor Sd — fondo sólido (× Σ diámetros ≥ 4/0)', numVal(par.sdSolido), '0', null, 'Ídem para fondo sólido: Columna 4 base − 25·Sd.', 'PRY_SD_S'],
       ['Ducto cuadrado — llenado NEC 376.22', pv('ductoFactor', 0.2), '0%', null, 'NEC 376.22(A): suma de áreas de los conductores ≤ 20 % de la sección interior del ducto.', 'PRY_DUCTO'],
       ['Ducto cuadrado — máx. conductores portadores', pv('ductoMaxConductores', 30), '0', null, 'NEC 376.22(B): con más de 30 conductores portadores se aplican los factores de ajuste de 310.15(C)(1).', 'PRY_DUCTO_MAX'],
-      ['Llenado real — alerta desde', pv('llenadoAlerta', 0.3), '0%', null, 'Amarillo: planifique la reserva para crecimiento.', 'PRY_LL_ALERTA'],
-      ['Llenado real — criterio Sinergia de prellenado', pv('llenadoSinergia', 0.4), '0%', null, 'Naranja (⚠): supera el prellenado de diseño de Sinergia.', 'PRY_LL_SINERGIA'],
-      ['Llenado real — máximo TIA-569 / BICSI', pv('llenadoMax', 0.5), '0%', null, 'Rojo (❌): el tramo NO CUMPLE.', 'PRY_LL_MAX'],
       ['Marca de cable / Cable brand', (cat.fabricantesCable.filter(function (f) { return f.id === fabCable; })[0] || {}).nombre || '', null, null, 'La lista de cables de los niveles muestra solo esta marca. Para otra marca, exporte de nuevo desde la herramienta.', 'PRY_MARCA_CABLE']
     ];
     params.forEach(function (x, i) {
@@ -368,26 +354,13 @@
       if (x[3]) lista(wsP, 'F' + r, x[3]);
       dn.add('Proyecto!$F$' + r, x[5]);
     });
-    var rReco = 16 + params.length + 1;
-    put(wsP, 'D' + rReco, 'Recomendaciones — llenado real (TIA-569 / BICSI · criterio Sinergia)', E.lbl);
-    [
-      '="Menos de "&TEXT(PRY_LL_ALERTA,"0%")&": llenado bajo, con holgura para crecimiento (verde)."',
-      '=TEXT(PRY_LL_ALERTA,"0%")&" – "&TEXT(PRY_LL_SINERGIA,"0%")&": llenado medio; confirme que la reserva prevista cubre el crecimiento esperado (amarillo)."',
-      '=TEXT(PRY_LL_SINERGIA,"0%")&" – "&TEXT(PRY_LL_MAX,"0%")&": supera el criterio Sinergia de prellenado; evalúe una canalización mayor o dividir el tramo (naranja)."',
-      '="Más de "&TEXT(PRY_LL_MAX,"0%")&": excede el llenado máximo de la canalización según TIA-569 / BICSI; cambie de tamaño o divida el tramo (rojo, NO CUMPLE)."',
-      'Profundidad útil de cómputo: máx. 150 mm (6 in) en canastas y escaleras (NEC 392.22(A)).',
-      'Verifique además, contra la edición vigente de ANSI/TIA-569 y del manual BICSI TDMM, la separación entre cables de potencia y de telecomunicaciones, los radios de curvatura y la soportería.'
-    ].forEach(function (t, i) {
-      var r = rReco + 1 + i;
-      put(wsP, 'D' + r, t, E.reco); wsP.mergeCells('D' + r + ':G' + r); wsP.getRow(r).height = i === 5 ? 30 : 18;
-    });
-    var rIns = rReco + 8;
+    var rIns = 16 + params.length + 2;
     [
       'Instrucciones',
       '1. Celdas VERDES = entrada manual. Los parámetros de esta hoja aplican a todo el edificio.',
       '2. Cada nivel tiene su pestaña, ubicada entre INICIO_NIVELES y FIN_NIVELES. Para agregar otro nivel: Ctrl + arrastrar una pestaña de nivel hasta antes de FIN_NIVELES y renombrarla; los TOTALES del Resumen y las listas de materiales la incluyen solos.',
       '3. En cada nivel: (a) nombre cada tramo y elija su canalización (o deje la de por defecto); (b) en la lista de cables elija el # de tramo, el cable y la cantidad; (c) revise el tamaño recomendado y elija el seleccionado (columna verde).',
-      '4. Criterios: NEC 2020 Art. 392.22(A) (canasta y escalera) y 376.22 (ducto cuadrado), carga máxima por claro del fabricante y llenado real TIA-569 / BICSI con el criterio Sinergia.'
+      '4. Criterios: NEC 2020 Art. 392.22(A) (canasta y escalera) y 376.22 (ducto cuadrado), carga máxima por claro del fabricante y % de ocupación bruta (solo referencia).'
     ].forEach(function (t, i) {
       var r = rIns + i;
       put(wsP, 'D' + r, t, i ? { alignment: { wrapText: true, vertical: 'top' } } : E.lbl);
@@ -421,11 +394,11 @@
     });
     tituloTabla(wsR, 'C12:M12', 1, 'Criterios de diseño');
     var crit = [
-      ['Área NEC 392.22(A)(1)', '="Canasta y escalera — cables < 4/0: Σ áreas ≤ Col. 1 (ventilada) / Col. 3 (sólido). Mezcla con ≥ 4/0: Σ áreas < 4/0 ≤ Col. 2 − "&PRY_SD_V&"·Sd (ventilada) / Col. 4 − "&PRY_SD_S&"·Sd (sólido). Solo ≥ 4/0: una capa, Σ diámetros ≤ ancho."'],
+      ['Área NEC 392.22(A)', '="(b) Cables < 4/0: Σ áreas ≤ Col. 1 (escalera / ventilada, (A)(1)) o Col. 3 (fondo sólido, (A)(3)). (c) Mezcla con ≥ 4/0: Σ áreas < 4/0 ≤ Col. 2 − "&PRY_SD_V&"·Sd o Col. 4 − "&PRY_SD_S&"·Sd. (a) Solo ≥ 4/0: una capa, Σ diámetros ≤ ancho (fondo sólido: ≤ 90 % del ancho)."'],
       ['Ducto cuadrado — NEC 376.22', '="Σ áreas de todos los cables ≤ "&TEXT(PRY_DUCTO,"0%")&" de la sección interior del ducto. Más de "&PRY_DUCTO_MAX&" conductores portadores: factores de ajuste 310.15(C)(1)."'],
       ['Reserva de diseño', '=TEXT(PRY_RESERVA,"0%")&" del área permitida por NEC como máximo ("&IF(PRY_RESERVA>=1,"sin reserva","reserva de "&TEXT(1-PRY_RESERVA,"0%"))&")"'],
       ['Carga / claro', 'Carga real de los cables (lb/ft) ≤ carga máxima admisible del fabricante para el claro entre soportes del tramo (según la línea de producto).'],
-      ['Llenado real — TIA-569 / BICSI · Sinergia', '="Área de todos los cables ÷ área interior útil. Menos de "&TEXT(PRY_LL_ALERTA,"0%")&": adecuado · "&TEXT(PRY_LL_ALERTA,"0%")&"–"&TEXT(PRY_LL_SINERGIA,"0%")&": alerta · más de "&TEXT(PRY_LL_SINERGIA,"0%")&": supera el criterio Sinergia (⚠) · más de "&TEXT(PRY_LL_MAX,"0%")&": excede el máximo TIA-569 / BICSI (❌)."'],
+      ['Ocupación bruta', '="Área de todos los cables ÷ área interior útil (ancho real × min(alto, "&PRY_ALTMAX&" mm); ducto: sección completa). Referencia del fabricante; NO es el cumplimiento NEC."'],
       ['Canalización / tipo / claro por defecto', '=PRY_LINEA&" · "&PRY_TIPO&" · "&FIXED(PRY_CLARO,2)&" ft · acabado "&PRY_ACABADO'],
       ['Limitaciones', 'No incluye ampacidad (NEC 392.80(A)), soportes (392.30 / 376.30) ni curvas. Cables de control/señal: fuera del chequeo de área NEC 392.22. Verifique las tablas contra la edición vigente.']
     ];
@@ -437,7 +410,7 @@
     });
     var r0 = 22;
     tituloTabla(wsR, 'C' + r0 + ':M' + r0, 2, 'Niveles del edificio');
-    ['#', 'Pestaña / Tab', 'Nivel / Level', 'Tramos', 'Cables', 'Errores ❌', 'Advertencias ⚠', 'Long. (m)', 'Máx % NEC', 'Máx % carga', 'Máx % llenado real']
+    ['#', 'Pestaña / Tab', 'Nivel / Level', 'Tramos', 'Cables', 'Errores ❌', 'Advertencias ⚠', 'Long. (m)', 'Máx % NEC', 'Máx % carga', 'Máx % ocup. bruta']
       .forEach(function (t, i) { put(wsR, L(3 + i) + (r0 + 1), t, E.hdr); });
     var sv = X.sv;
     hojasNivel.forEach(function (h, i) {
@@ -460,7 +433,6 @@
     wsR.mergeCells('C' + (rT + 1) + ':M' + (rT + 1)); wsR.getRow(rT + 1).height = 24;
     wsR.addConditionalFormatting({ ref: 'H' + (r0 + 2) + ':H' + rT, rules: [{ type: 'expression', priority: 1, formulae: ['N(H' + (r0 + 2) + ')>0'], style: dxf('error') }] });
     wsR.addConditionalFormatting({ ref: 'I' + (r0 + 2) + ':I' + rT, rules: [{ type: 'expression', priority: 2, formulae: ['N(I' + (r0 + 2) + ')>0'], style: dxf('warn') }] });
-    semaforoReal(wsR, 'M' + (r0 + 2) + ':M' + rT, 'M' + (r0 + 2), 3);
 
     // Canalizaciones por tamaño
     var rc = rT + 4;
@@ -511,7 +483,7 @@
     [2, 14, 5, 30, 34, 20, 9, 13, 24, 18, 12, 10, 12, 36, 11].forEach(function (w, i) { wsD.getColumn(1 + i).width = w; });
     put(wsD, 'B4', '=TRIM("Memoria de cálculo — detalle de tramos · "&Proyecto!F8&" "&Proyecto!F9)', E.titulo);
     tituloTabla(wsD, 'B5:O5', 5, 'Detalle de tramos por nivel (los niveles agregados en Excel no aparecen aquí)');
-    ['Nivel / Level', '#', 'Sección / Section', 'Canalización', 'Tipo / Type', 'Cables', 'Área cables (mm²)', 'Tamaño seleccionado', 'Referencia / P/N', '% llenado NEC', '% carga', '% llenado real', 'Veredicto / Verdict', 'Distancia (m)']
+    ['Nivel / Level', '#', 'Sección / Section', 'Canalización', 'Tipo / Type', 'Cables', 'Área cables (mm²)', 'Tamaño seleccionado', 'Referencia / P/N', '% llenado NEC', '% carga', '% ocup. bruta', 'Veredicto / Verdict', 'Distancia (m)']
       .forEach(function (t, i) { put(wsD, L(2 + i) + '6', t, E.hdr); });
     wsD.getRow(6).height = 30;
     var rd = 7;
@@ -541,22 +513,21 @@
       wsD.addConditionalFormatting({ ref: 'K7:K' + (rd - 1), rules: [
         { type: 'expression', priority: 10, formulae: ['AND(ISNUMBER($K7),$K7>1)'], style: dxf('error') },
         { type: 'expression', priority: 11, formulae: ['AND(ISNUMBER($K7),$K7>PRY_RESERVA)'], style: dxf('warn') }] });
-      semaforoReal(wsD, 'M7:M' + (rd - 1), '$M7', 12);
     }
 
     /* ---------- AYUDA ---------- */
     wsAyuda.getColumn(2).width = 4; wsAyuda.getColumn(3).width = 120;
     put(wsAyuda, 'B2', 'Ayuda — cómo usar este libro (exportado desde la herramienta web Canastas MC)', E.titulo);
     [
-      ['A', 'PROYECTO — pestaña Proyecto: datos, reserva de diseño, canalización por defecto (marca · tipo), claro, tipo de canasta, acabado, criterios del ducto y del llenado real. Aplican a todo el edificio.'],
+      ['A', 'PROYECTO — pestaña Proyecto: datos, reserva de diseño, canalización por defecto (marca · tipo), claro, tipo de canasta, acabado, criterios del ducto cuadrado. Aplican a todo el edificio.'],
       ['B', 'NIVELES — cada nivel tiene su pestaña entre INICIO_NIVELES y FIN_NIVELES. Para agregar uno: Ctrl + arrastrar una pestaña de nivel y renombrarla.'],
       ['C', 'TRAMOS — tabla superior (hasta ' + X.nT + ' tramos): nombre, canalización (canasta, escalera o ducto cuadrado de cada marca), tipo, claro, tamaño seleccionado y distancia. Celdas VERDES = entrada manual.'],
       ['D', 'CABLES — lista inferior (hasta ' + X.nC + ' líneas): # de tramo (lista desplegable), cable y cantidad. Un tramo suma todas las líneas que tengan su número.'],
       ['E', 'TAMAÑO RECOMENDADO — el de menor sección de la línea del tramo que cumple el área NEC (con la reserva de diseño) y la carga máx. por claro.'],
       ['F', '% LLENADO NEC — canasta/escalera: Σ áreas < 4/0 ÷ área permitida 392.22 (o Σ diámetros ÷ ancho si todos son ≥ 4/0). Ducto: Σ áreas de todos los cables ÷ (20 % de la sección), NEC 376.22.'],
       ['G', '% CARGA — peso real de los cables (lb/ft) ÷ carga máxima admisible para el claro del tramo. Rojo si excede 100 %.'],
-      ['H', '% LLENADO REAL — área de todos los cables ÷ área interior útil. Verde < alerta · amarillo alerta–Sinergia · naranja > criterio Sinergia (⚠) · rojo > máximo TIA-569 / BICSI (❌).'],
-      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho, peso/claro o llenado real) · ⚠ advertencia (reserva, criterio Sinergia, > 30 conductores en ducto) · ✔ CUMPLE.'],
+      ['H', '% OCUPACIÓN BRUTA — área de todos los cables ÷ área interior útil (ancho × min(alto, 150 mm); ducto: sección completa). Solo referencia del fabricante; naranja si supera su factor de llenado.'],
+      ['I', 'VEREDICTO — ❌ NO CUMPLE (área NEC, ancho o peso/claro) · ⚠ advertencia (reserva de diseño, > 30 conductores portadores en ducto u ocupación bruta > fabricante) · ✔ CUMPLE.'],
       ['J', 'RESUMEN / DETALLE — consolidan niveles, errores, longitudes y la lista de materiales de canalizaciones y cables.'],
       ['K', 'LIMITACIONES — no se verifica ampacidad (NEC 392.80(A)), soportes (392.30 / 376.30) ni curvas. Los cables de control/señal no entran en el chequeo de área NEC 392.22.'],
       ['L', 'DATOS — los catálogos (Canastas, Lineas, Cables, Listas) están en pestañas ocultas: clic derecho en una pestaña → Mostrar.']
@@ -619,7 +590,7 @@
     for (var k = primeraAux; k <= ultimaAux; k++) ws.getColumn(k).hidden = true;
 
     put(ws, 'E3', 'Memoria de cálculo — canalizaciones portacables (cable MC)', E.titulo);
-    put(ws, 'E4', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado · TIA-569 / BICSI llenado real', E.sub);
+    put(ws, 'E4', 'NEC 2020 Art. 392.22(A) canasta y escalera · Art. 376.22 ducto cuadrado', E.sub);
     put(ws, 'D8', 'Nivel / Level', E.lbl); put(ws, 'F8', nivel.nombre || null, E.ent); ws.mergeCells('F8:I8');
     put(ws, 'D9', 'Proyecto / Project', E.lbl); put(ws, 'F9', '=TRIM(Proyecto!F8&" "&Proyecto!F9)'); ws.mergeCells('F9:L9');
     put(ws, 'D10', 'Ubicación / Location', E.lbl); put(ws, 'F10', '=Proyecto!F10&""'); ws.mergeCells('F10:L10');
@@ -632,7 +603,7 @@
 
     var hdr = { C: '#', D: 'Sección o tramo / Section', E: 'Canalización (vacío = por defecto)', F: 'Tipo de canasta / Tray type', G: 'Claro (ft) / Span', H: 'Cables', I: 'Área cables < 4/0 (mm²)',
       J: 'Σ diámetros ≥ 4/0 — Sd (mm)', K: 'Caso NEC', L: 'Tamaño recomendado* / Recommended', M: 'Tamaño seleccionado / Selected',
-      N: 'Área permitida NEC (mm²)', O: '% llenado NEC', P: 'Carga cables (lb/ft)', Q: 'Carga máx. (lb/ft)', R: '% carga (peso)', S: '% llenado real+',
+      N: 'Área permitida NEC (mm²)', O: '% llenado NEC', P: 'Carga cables (lb/ft)', Q: 'Carga máx. (lb/ft)', R: '% carga (peso)', S: '% ocupación bruta+',
       T: 'Veredicto / Verdict', V: 'Distancia tramo (m)', W: 'Ref. fabricante recomendada', X: 'Ref. fabricante seleccionada' };
     Object.keys(hdr).forEach(function (c) { put(ws, c + '17', hdr[c], E.hdr); });
     ws.getRow(17).height = 45;
@@ -659,23 +630,23 @@
       put(ws, 'H' + r, '=SUMIFS(' + TJ + ',' + TD + ',' + $('C') + ')', con(E.sal, { numFmt: '0;-0;;@' }));
       put(ws, 'I' + r, '=SUMIFS(' + TN + ',' + TD + ',' + $('C') + ',' + TM + ',"MC < 4/0")', con(E.sal, { numFmt: '#,##0.0;-#,##0.0;;@' }));
       put(ws, 'J' + r, '=SUMIFS(' + TO + ',' + TD + ',' + $('C') + ',' + TM + ',"MC >= 4/0")', con(E.sal, { numFmt: '#,##0.00;-#,##0.00;;@' }));
-      put(ws, 'K' + r, '=IF(' + $('H') + '=0,"",CHOOSE(' + $('AZ') + '+1,"solo control/señal","(A)(1) · todos < 4/0","(A)(1)(a) · todos ≥ 4/0","(A)(1)(b) · mezcla","376.22 · ≤ 20 % de la sección"))', con(E.sal, { font: { size: 9 } }));
+      var artC = 'IF(' + $('BA') + '=1,"(A)(1)","(A)(3)")';
+      put(ws, 'K' + r, '=IF(' + $('H') + '=0,"",CHOOSE(' + $('AZ') + '+1,"solo control/señal",' + artC + '&"(b) · todos < 4/0",' + artC + '&"(a) · todos ≥ 4/0",' + artC + '&"(c) · mezcla","376.22 · ≤ 20 % de la sección"))', con(E.sal, { font: { size: 9 } }));
       put(ws, 'L' + r, '=IF(' + $('AZ') + '=0,"",IFERROR(INDEX(CAN_NOMBRE,MATCH(1,$' + mIni + r + ':$' + mFin + r + ',0)),"❌ ninguna cumple — divida el tramo"))', E.sal);
       put(ws, 'M' + r, can ? ctx.nombreCan[can.id] : null, E.ent); lista(ws, 'M' + r, 'CAN_NOMBRE');
       put(ws, 'N' + r, '=IF(OR(' + $('BE') + '="",' + $('AZ') + '=0),"",IF(' + $('AZ') + '=4,IFERROR(PRY_DUCTO*INDEX(CAN_SECCION,' + $('BE') + '),""),IF(' + $('AZ') + '=2,"n/a",IFERROR(IF(' + $('AZ') + '=1,IF(' + $('BA') + '=1,INDEX(CAN_C1,' + $('BE') + '),INDEX(CAN_C3,' + $('BE') + ')),IF(' + $('BA') + '=1,INDEX(CAN_C2,' + $('BE') + '),INDEX(CAN_C4,' + $('BE') + '))-' + $('BB') + '*' + $('J') + '),""))))', con(E.sal, { numFmt: '#,##0.0' }));
-      put(ws, 'O' + r, '=IF(OR(' + $('BE') + '="",' + $('AZ') + '=0),"",IF(' + $('AZ') + '=2,' + $('J') + '/INDEX(CAN_ANCHO,' + $('BE') + '),IF(' + $('N') + '="","",IF(' + $('AZ') + '=4,IF(' + $('N') + '>0,' + $('AY') + '/' + $('N') + ',9.99),IF(' + $('N') + '<=0,9.99,' + $('I') + '/' + $('N') + ')))))', pct);
+      put(ws, 'O' + r, '=IF(OR(' + $('BE') + '="",' + $('AZ') + '=0),"",IF(' + $('AZ') + '=2,' + $('J') + '/(INDEX(CAN_ANCHO,' + $('BE') + ')*IF(' + $('BA') + '=1,1,0.9)),IF(' + $('N') + '="","",IF(' + $('AZ') + '=4,IF(' + $('N') + '>0,' + $('AY') + '/' + $('N') + ',9.99),IF(' + $('N') + '<=0,9.99,' + $('I') + '/' + $('N') + ')))))', pct);
       put(ws, 'P' + r, '=IF(' + $('H') + '=0,"",SUMIFS(' + TP + ',' + TD + ',' + $('C') + '))', con(E.sal, { numFmt: '0.00' }));
       put(ws, 'Q' + r, '=IF(OR(' + $('BE') + '="",' + $('BD') + '="",' + $('H') + '=0),"",IF(INDEX(CAN_CARGAS,' + $('BE') + ',' + $('BD') + ')="","",INDEX(CAN_CARGAS,' + $('BE') + ',' + $('BD') + ')))', con(E.sal, { numFmt: '0.00' }));
       put(ws, 'R' + r, '=IF(OR(' + $('P') + '="",' + $('Q') + '=""),"",IF(N(' + $('Q') + ')=0,9.99,' + $('P') + '/' + $('Q') + '))', pct);
       put(ws, 'S' + r, '=IF(OR(' + $('BE') + '="",' + $('H') + '=0),"",IF(N(INDEX(CAN_BRUTA,' + $('BE') + '))>0,' + $('AY') + '/INDEX(CAN_BRUTA,' + $('BE') + '),""))', pct);
       var fArea = 'AND(' + $('AZ') + '<>0,' + $('AZ') + '<>2,ISNUMBER(' + $('O') + '),N(' + $('O') + ')>1)';
-      var fAncho = 'AND(OR(' + $('AZ') + '=2,' + $('AZ') + '=3),' + $('J') + '>INDEX(CAN_ANCHO,' + $('BE') + '))';
+      var fAncho = 'OR(AND(' + $('AZ') + '=2,' + $('J') + '>INDEX(CAN_ANCHO,' + $('BE') + ')*IF(' + $('BA') + '=1,1,0.9)),AND(' + $('AZ') + '=3,' + $('J') + '>INDEX(CAN_ANCHO,' + $('BE') + ')))';
       var fPeso = 'AND(ISNUMBER(' + $('R') + '),N(' + $('R') + ')>1)';
-      var fReal = 'AND(ISNUMBER(' + $('S') + '),N(' + $('S') + ')>PRY_LL_MAX)';
-      put(ws, 'T' + r, '=IF(' + $('H') + '=0,"",IF(' + $('BE') + '="","— seleccione tamaño",IF(OR(' + fArea + ',' + fAncho + ',' + fPeso + ',' + fReal + '),"❌ NO CUMPLE —"&IF(' + fArea + ',IF(' + $('AZ') + '=4," área NEC 376.22"," área NEC"),"")&IF(' + fAncho + '," ancho","")&IF(' + fPeso + '," peso/claro","")&IF(' + fReal + '," llenado real > "&TEXT(PRY_LL_MAX*100,"0")&" % (TIA-569)",""),' +
+      put(ws, 'T' + r, '=IF(' + $('H') + '=0,"",IF(' + $('BE') + '="","— seleccione tamaño",IF(OR(' + fArea + ',' + fAncho + ',' + fPeso + '),"❌ NO CUMPLE —"&IF(' + fArea + ',IF(' + $('AZ') + '=4," área NEC 376.22"," área NEC"),"")&IF(' + fAncho + '," ancho","")&IF(' + fPeso + '," peso/claro",""),' +
         'IF(AND(' + $('AZ') + '<>0,' + $('AZ') + '<>2,' + $('N') + '=""),IF(' + $('AZ') + '=4,"⚠ faltan dimensiones del ducto","⚠ sin dato NEC para el ancho de la canasta"),IF(AND(ISNUMBER(' + $('O') + '),N(' + $('O') + ')>PRY_RESERVA),"⚠ supera la reserva de diseño",' +
-        'IF(AND(ISNUMBER(' + $('S') + '),N(' + $('S') + ')>PRY_LL_SINERGIA),"⚠ llenado real > "&TEXT(PRY_LL_SINERGIA*100,"0")&" % (criterio Sinergia)",' +
-        'IF(AND(' + $('AZ') + '=4,N(' + $('AS') + ')>PRY_DUCTO_MAX),"⚠ > "&PRY_DUCTO_MAX&" conductores portadores: aplique ajuste 310.15(C)(1)","✔ CUMPLE")))))))', E.sal);
+        'IF(AND(' + $('AZ') + '=4,N(' + $('AS') + ')>PRY_DUCTO_MAX),"⚠ > "&PRY_DUCTO_MAX&" conductores portadores: aplique ajuste 310.15(C)(1)",' +
+        'IF(AND(ISNUMBER(' + $('S') + '),ISNUMBER(' + $('BF') + '),N(' + $('S') + ')>N(' + $('BF') + ')),"⚠ ocupación bruta > fabricante","✔ CUMPLE")))))))', E.sal);
       put(ws, 'V' + r, numVal(t.distancia), con(E.ent, { numFmt: '#,##0.0' }));
       put(ws, 'W' + r, '=IF(OR(' + $('L') + '="",LEFT(' + $('L') + ',1)="❌"),"",INDEX(CAN_REF,MATCH(' + $('L') + ',CAN_NOMBRE,0)))', con(E.sal, { font: { size: 9 } }));
       put(ws, 'X' + r, '=IF(' + $('BE') + '="","",INDEX(CAN_REF,' + $('BE') + '))', con(E.sal, { font: { size: 9 } }));
@@ -694,14 +665,13 @@
       put(ws, 'BC' + r, '=IF(' + $('G') + '<>"",' + $('G') + ',IFERROR(IF(OR(INDEX(LIN_CLAROS,' + $('BG') + ',1)="",ISNUMBER(MATCH(PRY_CLARO,INDEX(LIN_CLAROS,' + $('BG') + ',0),0))),PRY_CLARO,INDEX(LIN_CLAROS,' + $('BG') + ',1)),PRY_CLARO))');
       put(ws, 'BD' + r, '=IFERROR(MATCH(' + $('BC') + ',INDEX(LIN_CLAROS,' + $('BG') + ',0),0),"")');
       put(ws, 'BE' + r, '=IF(' + $('M') + '="","",IFERROR(MATCH(' + $('M') + ',CAN_NOMBRE,0),""))');
-      put(ws, 'BF' + r, '');
+      put(ws, 'BF' + r, '=IF(' + $('BE') + '="","",IF(INDEX(CAN_FACTOR,' + $('BE') + ')="","",INDEX(CAN_FACTOR,' + $('BE') + ')))');
       for (var m = 0; m < nCan; m++) {
         var cm = L(X.matriz0 + m), jx = cm + '$18';
         var area = 'IF(' + $('AZ') + '=1,IF(' + $('BA') + '=1,INDEX(CAN_C1,' + jx + '),INDEX(CAN_C3,' + jx + ')),IF(' + $('BA') + '=1,INDEX(CAN_C2,' + jx + '),INDEX(CAN_C4,' + jx + '))-' + $('BB') + '*' + $('J') + ')';
         var okArea = 'IF(' + $('AZ') + '=4,' + $('AY') + '<=IFERROR(PRY_RESERVA*PRY_DUCTO*INDEX(CAN_SECCION,' + jx + '),-1),OR(' + $('AZ') + '=2,' + $('I') + '<=IFERROR(PRY_RESERVA*' + area + ',-1)))';
-        var okReal = 'IFERROR(' + $('AY') + '/INDEX(CAN_BRUTA,' + jx + ')<=PRY_LL_SINERGIA,FALSE)';
         var okCarga = 'IF(' + $('BD') + '="",TRUE,IF(INDEX(CAN_CARGAS,' + jx + ',' + $('BD') + ')="",TRUE,' + $('P') + '<=INDEX(CAN_CARGAS,' + jx + ',' + $('BD') + ')))';
-        put(ws, cm + r, '=IF(' + $('AZ') + '=0,"",IF(INDEX(CAN_LINEA,' + jx + ')<>' + $('AT') + ',0,IF(AND(' + okArea + ',OR(' + $('AZ') + '=1,' + $('AZ') + '=4,' + $('J') + '<=INDEX(CAN_ANCHO,' + jx + ')),' + okCarga + ',' + okReal + '),1,0)))');
+        put(ws, cm + r, '=IF(' + $('AZ') + '=0,"",IF(INDEX(CAN_LINEA,' + jx + ')<>' + $('AT') + ',0,IF(AND(' + okArea + ',OR(' + $('AZ') + '=1,' + $('AZ') + '=4,' + $('J') + '<=INDEX(CAN_ANCHO,' + jx + ')*IF(AND(' + $('AZ') + '=2,' + $('BA') + '=0),0.9,1)),' + okCarga + '),1,0)))');
       }
     }
     semaforo(ws, 'T' + t0 + ':T' + tE, '$T' + t0);
@@ -712,8 +682,9 @@
       { type: 'expression', priority: 7, formulae: ['ISNUMBER($O' + t0 + ')'], style: dxf('ok') }] });
     ws.addConditionalFormatting({ ref: 'R' + t0 + ':R' + tE, rules: [
       { type: 'expression', priority: 8, formulae: ['AND(ISNUMBER($R' + t0 + '),$R' + t0 + '>1)'], style: dxf('error') }] });
-    semaforoReal(ws, 'S' + t0 + ':S' + tE, '$S' + t0, 9);
-    put(ws, 'D' + (tE + 1), '* Recomendado: el de menor sección de la línea del tramo que cumple el área NEC con la reserva de diseño (392.22 o 376.22) la carga máx. del fabricante para el claro y el llenado real ≤ criterio Sinergia. + Llenado real: área de todos los cables ÷ área interior útil; amarillo ≥ alerta, naranja > criterio Sinergia, rojo > máximo TIA-569 / BICSI.', E.nota);
+    ws.addConditionalFormatting({ ref: 'S' + t0 + ':S' + tE, rules: [
+      { type: 'expression', priority: 9, formulae: ['AND(ISNUMBER($S' + t0 + '),ISNUMBER($BF' + t0 + '),$S' + t0 + '>$BF' + t0 + ')'], style: dxf('warn') }] });
+    put(ws, 'D' + (tE + 1), '* Recomendado: el de menor sección de la línea del tramo que cumple el área NEC con la reserva de diseño (392.22 o 376.22; fondo sólido con todos ≥ 4/0: Σ diámetros ≤ 90 % del ancho) y la carga máx. del fabricante para el claro. + Ocupación bruta: área de todos los cables ÷ área interior útil; solo referencia del fabricante.', E.nota);
     ws.mergeCells('D' + (tE + 1) + ':X' + (tE + 1)); ws.getRow(tE + 1).height = 24;
 
     // ---- Cables ----
@@ -751,7 +722,7 @@
     // ---- Resumen del nivel (misma posición en todas las hojas: lo leen el Resumen y los totales 3D) ----
     var sv = X.sv;
     put(ws, 'C' + (sv - 2), 'Resumen del nivel — alimenta las pestañas Resumen y Detalle (no editar)', E.seccion);
-    var ls = { E: 'Nivel', G: 'Tramos', H: 'Cables', I: 'Errores', J: 'Advert.', K: 'Long. (m)', L: 'Máx % NEC', M: 'Máx % carga', N: 'Máx % llenado real' };
+    var ls = { E: 'Nivel', G: 'Tramos', H: 'Cables', I: 'Errores', J: 'Advert.', K: 'Long. (m)', L: 'Máx % NEC', M: 'Máx % carga', N: 'Máx % ocup. bruta' };
     Object.keys(ls).forEach(function (c) { put(ws, c + (sv - 1), ls[c], E.hdr); });
     var TV2 = '$V$' + t0 + ':$V$' + tE, TT = '$T$' + t0 + ':$T$' + tE, TL = '$L$' + t0 + ':$L$' + tE, TQ = '$Q$' + c0 + ':$Q$' + cE,
       TO2 = '$O$' + t0 + ':$O$' + tE, TR2 = '$R$' + t0 + ':$R$' + tE, TS2 = '$S$' + t0 + ':$S$' + tE, TH = '$H$' + t0 + ':$H$' + tE;

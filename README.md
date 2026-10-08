@@ -4,7 +4,7 @@ Herramienta web (HTML + JavaScript, sin dependencias ni compilación) para dimen
 
 - **Canasta y escalera** — NEC 2020 Art. 392.22(A) (área permitida / suma de diámetros) y carga máxima por claro del fabricante.
 - **Ducto cuadrado (wireway)** — NEC 2020 Art. 376.22: Σ áreas ≤ 20 % de la sección; más de 30 conductores portadores → factores de 310.15(C)(1).
-- **Llenado real** (área de cables ÷ área interior útil) — TIA-569 / BICSI: verde < 30 %, amarillo 30–40 %, naranja > 40 % (criterio Sinergia de prellenado), rojo > 50 % (NO CUMPLE). Límites ajustables en la pestaña Proyecto.
+- **Ocupación bruta** (área de cables ÷ área interior útil) — solo referencia contra el factor de llenado del fabricante; no es el cumplimiento NEC.
 
 Nació del libro `Canasta_MC_V2_1.xlsx` y conserva sus fórmulas para canastas.
 
@@ -12,11 +12,21 @@ Nació del libro `Canasta_MC_V2_1.xlsx` y conserva sus fórmulas para canastas.
 
 | Pestaña | Contenido |
 |---|---|
-| **Proyecto** | Datos del proyecto, parámetros (reserva, canalización por defecto, acabado, marca de cable, tipo y claro, factores Sd, criterios del ducto y del llenado real con las recomendaciones TIA-569 / BICSI) y **niveles del edificio**. Cada nivel crea su propia pestaña. |
-| **Nivel (una por nivel)** | Tramos (canalización, tipo, claro, distancia, tamaño seleccionado y recomendado, % NEC, % carga, % llenado real, veredicto) y cables por tramo, elegidos por material, # de conductores, calibre e hilos. |
+| **Proyecto** | Datos del proyecto, parámetros (reserva, canalización por defecto, acabado, marca de cable, tipo y claro, factores Sd, criterios del ducto) y **niveles del edificio**. Cada nivel crea su propia pestaña. |
+| **Nivel (una por nivel)** | Tramos (canalización, tipo, claro, distancia, tamaño seleccionado y recomendado, % NEC, % carga, % ocupación bruta, veredicto) y cables por tramo, elegidos por material, # de conductores, calibre e hilos. |
 | **Memoria de cálculo** | Resumen por nivel, canalizaciones por tamaño (metros y piezas), cables por tipo y detalle de cada tramo. Se imprime con el formato Sinergia (membrete, hoja carta) y se descarga en **Excel (.xlsx) con fórmulas vivas** o CSV. |
-| **Ayuda** | Instrucciones y tabla NEC 392.22(A). |
+| **Ayuda** | Instrucciones y resumen de la norma: NEC 392.22(A) (casos (a), (b) y (c) para escalera/fondo ventilado y fondo sólido, con la Tabla 392.22(A) completa), 392.80(A)(1) y 376.22. |
 | **Administración** | Solo con PIN de administrador: marcas, líneas de producto, tamaños (dimensiones y cargas por claro), cables, fabricantes, tipos de canasta, reservas y tabla NEC. |
+
+## Criterios NEC que aplica la herramienta
+
+| Caso | Escalera / fondo ventilado — 392.22(A)(1) | Fondo sólido — 392.22(A)(3) |
+|---|---|---|
+| (a) Todos ≥ 4/0 AWG | Σ diámetros ≤ ancho, una sola capa | Σ diámetros ≤ **90 %** del ancho, una sola capa |
+| (b) Todos < 4/0 AWG | Σ áreas ≤ Columna 1 | Σ áreas ≤ Columna 3 |
+| (c) Mezcla | Σ áreas < 4/0 ≤ Columna 2 = Col. 1 − 30·Sd | Σ áreas < 4/0 ≤ Columna 4 = Col. 3 − 25·Sd |
+
+Ducto cuadrado, 376.22: Σ áreas ≤ 20 % de la sección; más de 30 conductores portadores → factores de ajuste de 310.15(C)(1). No se verifican los casos de solo control/señal (392.22(A)(2) y (A)(4)), la ampacidad (392.80(A)), los soportes (392.30 / 376.30) ni las curvas. El resumen de los artículos y la Tabla 392.22(A) están en la pestaña Ayuda.
 
 ## Catálogo de canalizaciones
 
@@ -63,7 +73,7 @@ js/app.js               Interfaz
 
 *Memoria de cálculo → Descargar Excel* genera AYUDA, Proyecto, Resumen, Detalle, una pestaña por nivel entre INICIO_NIVELES y FIN_NIVELES, NEC 392.22 y catálogos ocultos (Canastas, Lineas, Cables, Listas). Las celdas de resultado son fórmulas, con listas desplegables y semáforos; un nivel copiado en Excel se suma a los totales. En la lista de materiales se ocultan los tamaños y cables sin uso al exportar (conservan sus fórmulas). Funciona en Excel 2010 o posterior; requiere internet al exportar (carga ExcelJS desde cdnjs).
 
-Validación: un proyecto con canasta, escalera Cablofil y Eaton, ducto Eaton y Schneider, sobrecarga y líneas incompletas da en Excel los mismos valores que la herramienta (186 comprobaciones; la única diferencia es el texto del aviso de cable vacío) y ninguna fórmula con error.
+Validación: un proyecto con canasta, escalera Cablofil y Eaton, ducto Eaton y Schneider, fondo sólido y ventilada con cables ≥ 4/0, sobrecarga y líneas incompletas da en Excel los mismos valores que la herramienta (223 comprobaciones; la única diferencia es el texto del aviso de cable vacío) y ninguna fórmula con error.
 
 ## Limitaciones actuales (fase 1)
 
